@@ -1,0 +1,63 @@
+name: Market Intelligence Digest
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 8 * * *"
+      timezone: "Asia/Beirut"
+    - cron: "0 13 * * *"
+      timezone: "Asia/Beirut"
+    - cron: "0 23 * * *"
+      timezone: "Asia/Beirut"
+
+jobs:
+  send-test-email:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Send test digest email
+        env:
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SMTP_FROM: ${{ secrets.SMTP_FROM }}
+          EMAIL_TO: nicolasehaddad@gmail.com
+        run: |
+          python - <<'PY'
+          import os, smtplib
+          from email.message import EmailMessage
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+
+          now = datetime.now(ZoneInfo("Asia/Beirut")).strftime("%Y-%m-%d %H:%M")
+
+          body = f"""# Market Intelligence Brief
+
+          {now} Asia/Beirut
+
+          ## Bottom Line
+
+          This is a test email from the GitHub Action.
+
+          ## What Matters
+
+          - The automation is running.
+          - Email delivery is connected.
+          - The next step is adding the real digest script.
+
+          ## Action
+
+          No market action. This is only a technical test.
+          """
+
+          msg = EmailMessage()
+          msg["From"] = os.environ["SMTP_FROM"]
+          msg["To"] = os.environ["EMAIL_TO"]
+          msg["Subject"] = f"Test - Market Intelligence Digest - {now}"
+          msg.set_content(body)
+
+          with smtplib.SMTP_SSL(os.environ["SMTP_HOST"], int(os.environ["SMTP_PORT"])) as smtp:
+              smtp.login(os.environ["SMTP_USERNAME"], os.environ["SMTP_PASSWORD"])
+              smtp.send_message(msg)
+          PY
