@@ -244,10 +244,19 @@ jobs:
           msg['To'] = ', '.join(RECIPIENTS)
           msg.set_content(plain)
           msg.add_alternative(body, subtype='html')
-          with smtplib.SMTP(os.environ['SMTP_HOST'], int(os.environ['SMTP_PORT'])) as smtp:
-              smtp.starttls()
-              smtp.login(os.environ['SMTP_USERNAME'], os.environ['SMTP_PASSWORD'])
-              smtp.send_message(msg)
+          host = os.environ['SMTP_HOST']
+          port = int(os.environ['SMTP_PORT'])
+          if port == 465:
+              with smtplib.SMTP_SSL(host, port) as smtp:
+                  smtp.login(os.environ['SMTP_USERNAME'], os.environ['SMTP_PASSWORD'])
+                  smtp.send_message(msg)
+          else:
+              with smtplib.SMTP(host, port) as smtp:
+                  smtp.ehlo()
+                  smtp.starttls()
+                  smtp.ehlo()
+                  smtp.login(os.environ['SMTP_USERNAME'], os.environ['SMTP_PASSWORD'])
+                  smtp.send_message(msg)
           try:
               sent = set(json.loads(SENT_PATH.read_text()).get('sent_slots', []))
           except Exception:
