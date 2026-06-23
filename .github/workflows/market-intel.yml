@@ -3,9 +3,9 @@ name: Market Intelligence Digest
 on:
   workflow_dispatch:
   schedule:
-    # GitHub cron is UTC and can be late, so this wakes often and the script
-    # sends only once per Beirut target slot: 08:00, 13:00, 23:00.
-    - cron: '*/15 * * * *'
+    # GitHub cron is UTC. These are the Beirut targets plus a one-hour
+    # fallback for summer/winter time and occasional scheduler delays.
+    - cron: '0 5,6,10,11,20,21 * * *'
 
 permissions:
   contents: write
@@ -24,7 +24,7 @@ jobs:
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
           SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-          SMTP_FROM: ${{ secrets.SMTP_FROM }}
+          SMTP_FROM: 'nicolasehaddad@gmail.com'
           EMAIL_TO: 'nicolasehaddad@gmail.com, eliashaddad222@gmail.com'
           GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: |
