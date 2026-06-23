@@ -3,8 +3,6 @@ name: Trial News Digest
 on:
   push:
     branches: [main]
-    paths:
-      - '.github/workflows/trial-news-digest.yml'
   workflow_dispatch:
 
 permissions:
@@ -27,7 +25,6 @@ jobs:
           import csv, email.utils, html, json, os, re, smtplib, urllib.parse, urllib.request, xml.etree.ElementTree as ET
           from datetime import datetime, timedelta, timezone
           from email.message import EmailMessage
-          from io import StringIO
           from zoneinfo import ZoneInfo
 
           TZ = ZoneInfo('Asia/Beirut')
@@ -91,13 +88,13 @@ jobs:
                           dt = email.utils.parsedate_to_datetime(pub).astimezone(timezone.utc)
                           fresh = dt >= since
                       except Exception:
-                          dt = None
+                          pass
                       if not fresh and not keywords.search(blob):
                           continue
                       score = 0
                       score += 4 if keywords.search(blob) else 0
                       score += sum(1 for w in ('fed', 'yield', 'inflation', 'oil', 'iran', 'israel', 'gold', 'dollar', 'jobs') if w in blob.lower())
-                      items.append({'source': source, 'title': title, 'desc': desc, 'score': score, 'fresh': fresh})
+                      items.append({'source': source, 'title': title, 'score': score, 'fresh': fresh})
                       seen.add(title.lower())
               except Exception as e:
                   print('rss failed', source, e)
@@ -133,16 +130,16 @@ jobs:
 
           plain = f'''Trial News Digest - {NOW:%Y-%m-%d %H:%M} Asia/Beirut
 
-Bias: {bias}. {reason}
+          Bias: {bias}. {reason}
 
-Market snapshot:
-{plain_markets}
+          Market snapshot:
+          {plain_markets}
 
-What matters now:
-{plain_news}
+          What matters now:
+          {plain_news}
 
-{invalidation}
-'''
+          {invalidation}
+          '''
           body = f'''<!doctype html><html><body style="margin:0;background:#f6f7f9;font-family:Arial,sans-serif;color:#202124">
           <div style="max-width:720px;margin:0 auto;padding:20px">
           <h2 style="margin:0 0 4px">Trial News Digest</h2>
