@@ -414,38 +414,43 @@ jobs:
                   move = "higher" if new > old else ("lower" if new < old else "flat")
                   change_lines.append(f"- {label}: {old}/5 -> {new}/5 ({move})")
               cal_text = "\n".join(f"- {e['time']} Asia/Beirut | {e['importance']} | {e['name']}" for e in cal) or "- No high-priority calendar risks found in the next 48 hours."
-              text = f"""Market Intelligence Brief
-
-{NOW:%Y-%m-%d %H:%M} Asia/Beirut
-
-Bottom Line
-{bottom}
-
-Market Snapshot
-{chr(10).join(f"- {r['label']}: {fmt_market(r)[0]} | {fmt_market(r)[1]}" for r in mr)}
-
-Real Yield Snapshot
-{chr(10).join(f"- {r['label']}: {fmt_rate(r)[0]} | {fmt_rate(r)[1]}" for r in rr)}
-
-Calendar Risk - Next 48h
-{cal_text}
-
-Change Since Previous Digest
-{chr(10).join(change_lines) if prev else "- No previous run stored yet. This will start tracking after the first real digest."}
-
-What Matters
-{chr(10).join(f"- {r['title']}: {r['bias']} (Impact {r['impact']}/5, {r['confidence']})" for r in top) or "- No major items collected."}
-
-XAUUSD Bias
-{xauusd_bias(rows)}
-
-Action
-- Treat this as context, not a trade signal.
-- Before acting, check live XAUUSD, USD, real yields, oil, and session liquidity.
-
-Invalidation
-This read weakens if live prices do not confirm the headline channel, official sources contradict the story, or USD/real yields move against the implied gold direction.
-"""
+              market_text = "\n".join(f"- {r['label']}: {fmt_market(r)[0]} | {fmt_market(r)[1]}" for r in mr)
+              real_yield_text = "\n".join(f"- {r['label']}: {fmt_rate(r)[0]} | {fmt_rate(r)[1]}" for r in rr)
+              change_text = "\n".join(change_lines) if prev else "- No previous run stored yet. This will start tracking after the first real digest."
+              matters_text = "\n".join(f"- {r['title']}: {r['bias']} (Impact {r['impact']}/5, {r['confidence']})" for r in top) or "- No major items collected."
+              text = "\n".join([
+                  "Market Intelligence Brief",
+                  "",
+                  f"{NOW:%Y-%m-%d %H:%M} Asia/Beirut",
+                  "",
+                  "Bottom Line",
+                  bottom,
+                  "",
+                  "Market Snapshot",
+                  market_text,
+                  "",
+                  "Real Yield Snapshot",
+                  real_yield_text,
+                  "",
+                  "Calendar Risk - Next 48h",
+                  cal_text,
+                  "",
+                  "Change Since Previous Digest",
+                  change_text,
+                  "",
+                  "What Matters",
+                  matters_text,
+                  "",
+                  "XAUUSD Bias",
+                  xauusd_bias(rows),
+                  "",
+                  "Action",
+                  "- Treat this as context, not a trade signal.",
+                  "- Before acting, check live XAUUSD, USD, real yields, oil, and session liquidity.",
+                  "",
+                  "Invalidation",
+                  "This read weakens if live prices do not confirm the headline channel, official sources contradict the story, or USD/real yields move against the implied gold direction.",
+              ]) + "\n"
               score_cells = "".join(f'<td style="padding:10px;border:1px solid #e2e8f0;border-radius:10px;"><div style="font-size:13px;color:#64748b;">{label}</div><div style="margin:8px 0;"><strong>{scores[key]}/5</strong></div></td>' for key, label in {"xauusd_gold": "XAUUSD / Gold", "usd_rates": "USD / Rates", "oil_inflation": "Oil / Inflation", "geo_risk": "Geo Risk"}.items())
               change_html = "<p style='margin:0;color:#64748b;'>No previous run stored yet. This will start tracking after the first real digest.</p>" if not prev else "<ul style='margin:0;padding-left:20px;color:#334155;line-height:1.5;'>" + "".join(f"<li>{html.escape(line[2:])}</li>" for line in change_lines) + "</ul>"
               cal_html = "<p style='margin:0;color:#64748b;'>No high-priority calendar risks found in the next 48 hours.</p>" if not cal else "<ul style='margin:0;padding-left:20px;color:#334155;line-height:1.45;'>" + "".join(f"<li><strong>{html.escape(e['name'])}</strong><br><span style='color:#475569;'>{html.escape(e['time'])} Asia/Beirut</span> <strong>{html.escape(e['importance'])}</strong></li>" for e in cal) + "</ul>"
