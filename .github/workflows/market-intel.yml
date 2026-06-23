@@ -118,7 +118,6 @@ jobs:
           }
           last = json.loads(SNAPSHOT_PATH.read_text()) if SNAPSHOT_PATH.exists() else {}
           snapshot = {k: v for k, v in markets.items() if v}
-          SNAPSHOT_PATH.write_text(json.dumps(snapshot, indent=2), encoding='utf-8')
 
           def rss_items():
               feeds = [
@@ -254,6 +253,7 @@ jobs:
           except Exception:
               sent = set()
           sent.add(slot)
+          SNAPSHOT_PATH.write_text(json.dumps(snapshot, indent=2), encoding='utf-8')
           SENT_PATH.write_text(json.dumps({'sent_slots': sorted(sent)[-30:]}, indent=2), encoding='utf-8')
           print(f'Sent digest to {len(RECIPIENTS)} recipient(s): {", ".join(RECIPIENTS)}')
           PY
