@@ -3,9 +3,9 @@ name: Market Intelligence Digest
 on:
   workflow_dispatch:
   schedule:
-    # GitHub schedules can run late or skip top-of-hour jobs. Run twice hourly,
+    # GitHub schedules can run late or skip individual ticks. Wake often,
     # then send once per Beirut target slot with a grace window.
-    - cron: "17,47 * * * *"
+    - cron: "*/15 * * * *"
 
 permissions:
   contents: write
@@ -54,7 +54,7 @@ jobs:
               for hour in (8, 13, 23):
                   target = datetime.combine(day, time(hour, 0), tzinfo=tz)
                   delta = now - target
-                  if timedelta(0) <= delta <= timedelta(minutes=130):
+                  if timedelta(0) <= delta <= timedelta(minutes=240):
                       candidates.append(target)
 
           if not candidates:
