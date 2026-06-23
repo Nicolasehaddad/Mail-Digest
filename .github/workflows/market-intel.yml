@@ -3,8 +3,9 @@ name: Market Intelligence Digest
 on:
   workflow_dispatch:
   schedule:
-    # GitHub cron is UTC. These paired UTC hours cover Beirut UTC+2 and UTC+3.
-    - cron: "0 5,6,10,11,20,21 * * *"
+    # GitHub schedules can run late or skip top-of-hour jobs. Run twice hourly,
+    # then send once per Beirut target slot with a grace window.
+    - cron: "17,47 * * * *"
 
 permissions:
   contents: write
@@ -17,22 +18,62 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Check Beirut send window
+      - name: Resolve Beirut send slot
         id: beirut_time
         run: |
-          local_hour="$(TZ=Asia/Beirut date +'%H')"
-          local_time="$(TZ=Asia/Beirut date +'%Y-%m-%d %H:%M')"
-          echo "local_time=$local_time" >> "$GITHUB_OUTPUT"
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "send=true" >> "$GITHUB_OUTPUT"
-          elif [ "$local_hour" = "08" ] || [ "$local_hour" = "13" ] || [ "$local_hour" = "23" ]; then
-            echo "send=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "send=false" >> "$GITHUB_OUTPUT"
-            echo "Skipping: $local_time Asia/Beirut is not a send window."
-          fi
+          python - <<'PY'
+          import json
+          import os
+          from datetime import datetime, time, timedelta
+          from pathlib import Path
+          from zoneinfo import ZoneInfo
 
-      - name: Build and send market intelligence brief
+          tz = ZoneInfo("Asia/Beirut")
+          now = datetime.now(tz)
+          output = Path(os.environ["GITHUB_OUTPUT"])
+
+          def emit(key, value):
+              with output.open("a", encoding="utf-8") as handle:
+                  handle.write(f"{key}={value}\n")
+
+          emit("local_time", now.strftime("%Y-%m-%d %H:%M"))
+          if os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch":
+              emit("send", "true")
+              emit("send_slot", "manual-" + now.strftime("%Y-%m-%d-%H%M%S"))
+              print(f"Manual run: sending now at {now:%Y-%m-%d %H:%M} Asia/Beirut.")
+              raise SystemExit(0)
+
+          try:
+              sent = set(json.loads(Path(".digest-state/send-slots.json").read_text(encoding="utf-8")).get("sent_slots", []))
+          except Exception:
+              sent = set()
+
+          candidates = []
+          for day_offset in (0, 1):
+              day = (now - timedelta(days=day_offset)).date()
+              for hour in (8, 13, 23):
+                  target = datetime.combine(day, time(hour, 0), tzinfo=tz)
+                  delta = now - target
+                  if timedelta(0) <= delta <= timedelta(minutes=130):
+                      candidates.append(target)
+
+          if not candidates:
+              emit("send", "false")
+              print(f"Skipping: {now:%Y-%m-%d %H:%M} Asia/Beirut is outside the digest windows.")
+              raise SystemExit(0)
+
+          target = max(candidates)
+          slot = target.strftime("%Y-%m-%d-%H")
+          emit("send_slot", slot)
+          if slot in sent:
+              emit("send", "false")
+              print(f"Skipping: digest slot {slot} was already sent.")
+          else:
+              emit("send", "true")
+              print(f"Sending digest for Beirut slot {slot}; current time is {now:%Y-%m-%d %H:%M}.")
+          PY
+
+      - name: Build and send market intelligence digest
         if: steps.beirut_time.outputs.send == 'true'
         env:
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
@@ -43,8 +84,8 @@ jobs:
           EMAIL_TO: nicolasehaddad@gmail.com
         run: |
           python - <<'PY'
-          import email.utils
           import csv
+          import email.utils
           import html
           import json
           import os
@@ -60,879 +101,411 @@ jobs:
           from pathlib import Path
           from zoneinfo import ZoneInfo
 
-          TZ_NAME = "Asia/Beirut"
-          TZ = ZoneInfo(TZ_NAME)
+          TZ = ZoneInfo("Asia/Beirut")
           NOW = datetime.now(TZ)
           SINCE = NOW.astimezone(timezone.utc) - timedelta(hours=24)
           STATE_PATH = Path(".digest-state/latest.json")
-          BROWSER_USER_AGENT = (
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-              "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
-          )
-          FRED_USER_AGENT = "Mozilla/5.0"
+          UA = "Mozilla/5.0"
 
-          RSS_SOURCES = [
-              {
-                  "id": "fed_monetary",
-                  "name": "Federal Reserve",
-                  "url": "https://www.federalreserve.gov/feeds/press_monetary.xml",
-                  "tier": "official",
-                  "tags": ["usd", "rates", "xauusd"],
-              },
-              {
-                  "id": "fed_speeches",
-                  "name": "Federal Reserve Speeches",
-                  "url": "https://www.federalreserve.gov/feeds/speeches.xml",
-                  "tier": "official",
-                  "tags": ["usd", "rates", "xauusd"],
-              },
-              {
-                  "id": "ecb_press",
-                  "name": "ECB",
-                  "url": "https://www.ecb.europa.eu/rss/press.html",
-                  "tier": "official",
-                  "tags": ["eur", "rates", "usd"],
-              },
-              {
-                  "id": "bbc_business",
-                  "name": "BBC Business",
-                  "url": "https://feeds.bbci.co.uk/news/business/rss.xml",
-                  "tier": "public",
-                  "tags": [],
-              },
-              {
-                  "id": "bbc_world",
-                  "name": "BBC World",
-                  "url": "https://feeds.bbci.co.uk/news/world/rss.xml",
-                  "tier": "public",
-                  "tags": [],
-              },
-              {
-                  "id": "aljazeera",
-                  "name": "Al Jazeera",
-                  "url": "https://www.aljazeera.com/xml/rss/all.xml",
-                  "tier": "news",
-                  "tags": [],
-              },
-              {
-                  "id": "eia_energy",
-                  "name": "EIA",
-                  "url": "https://www.eia.gov/rss/todayinenergy.xml",
-                  "tier": "official",
-                  "tags": ["oil", "energy", "inflation"],
-              },
+          RSS = [
+              ("Federal Reserve", "https://www.federalreserve.gov/feeds/press_monetary.xml", "official", ["usd", "rates", "xauusd"]),
+              ("Federal Reserve Speeches", "https://www.federalreserve.gov/feeds/speeches.xml", "official", ["usd", "rates", "xauusd"]),
+              ("ECB", "https://www.ecb.europa.eu/rss/press.html", "official", ["eur", "rates", "usd"]),
+              ("BBC Business", "https://feeds.bbci.co.uk/news/business/rss.xml", "public", []),
+              ("BBC World", "https://feeds.bbci.co.uk/news/world/rss.xml", "public", []),
+              ("Al Jazeera", "https://www.aljazeera.com/xml/rss/all.xml", "news", []),
+              ("EIA", "https://www.eia.gov/rss/todayinenergy.xml", "official", ["oil", "energy", "inflation"]),
           ]
-
-          GDELT_QUERIES = [
+          GDELT = [
               ("gold_macro", '(gold OR XAUUSD OR "central bank gold" OR "gold ETF" OR "real yields")'),
               ("fed_usd_rates", '(Federal Reserve OR FOMC OR Powell OR "Treasury yields" OR CPI OR PCE OR payrolls)'),
               ("oil_geopolitics", '(Brent OR WTI OR oil OR OPEC OR "Strait of Hormuz" OR "Red Sea" OR tanker OR refinery)'),
               ("middle_east_risk", '("Middle East" OR Iran OR Israel OR Lebanon OR Syria OR Gaza OR Qatar OR Saudi OR "Red Sea")'),
           ]
-
-          MARKET_SYMBOLS = [
-              {"id": "gold", "label": "XAUUSD proxy", "symbol": "GC=F", "unit": "$"},
-              {"id": "dxy", "label": "US Dollar Index", "symbol": "DX-Y.NYB", "unit": ""},
-              {"id": "us10y", "label": "US 10Y yield", "symbol": "^TNX", "unit": "%"},
-              {"id": "wti", "label": "WTI crude", "symbol": "CL=F", "unit": "$"},
+          MARKET = [
+              ("XAUUSD proxy", "GC=F", "$"),
+              ("US Dollar Index", "DX-Y.NYB", ""),
+              ("US 10Y yield", "^TNX", "%"),
+              ("WTI crude", "CL=F", "$"),
           ]
-
-          FRED_CSV_SERIES = [
-              {"id": "real10y", "label": "US 10Y real yield", "series": "DFII10", "unit": "%"},
-              {"id": "breakeven10y", "label": "US 10Y breakeven", "series": "T10YIE", "unit": "%"},
-          ]
-
-          CALENDAR_IMPORTANCE = {
-              "Consumer Price Index": "High",
-              "Employment Situation": "High",
-              "Personal Income and the PCE Deflator": "High",
-              "FOMC": "High",
-              "Federal Funds": "High",
-              "Powell": "High",
-              "Gross Domestic Product": "Medium",
-              "Producer Price Index": "Medium",
-              "Initial Claims": "Medium",
-              "JOLTS": "Medium",
-              "Retail Sales": "Medium",
-              "Durable Goods": "Medium",
-              "Consumer Confidence": "Medium",
-              "ADP": "Medium",
-              "ISM Manufacturing": "Medium",
-              "ISM Non-Manufacturing": "Medium",
+          FRED = [("US 10Y real yield", "DFII10"), ("US 10Y breakeven", "T10YIE")]
+          IMPORTANT_CALENDAR = {
+              "Consumer Price Index": "High", "Employment Situation": "High",
+              "Personal Income and the PCE Deflator": "High", "FOMC": "High",
+              "Federal Funds": "High", "Powell": "High", "Gross Domestic Product": "Medium",
+              "Producer Price Index": "Medium", "Initial Claims": "Medium", "JOLTS": "Medium",
+              "Retail Sales": "Medium", "Durable Goods": "Medium", "Consumer Confidence": "Medium",
+              "ADP": "Medium", "ISM Manufacturing": "Medium", "ISM Non-Manufacturing": "Medium",
               "Michigan Consumer Survey": "Medium",
           }
 
-          TAG_RULES = [
-              (("gold", "xau", "bullion"), ["xauusd", "gold"], ["gold"]),
-              (("fed", "fomc", "powell", "treasury", "yield", "real yield"), ["usd", "rates", "xauusd"], ["rates"]),
-              (("cpi", "pce", "inflation", "payroll"), ["usd", "rates", "xauusd"], ["inflation"]),
-              (("oil", "brent", "wti", "opec", "hormuz", "red sea", "tanker"), ["oil", "inflation"], ["energy"]),
-              (("sanction", "ofac", "export controls"), ["sanctions", "oil", "usd", "xauusd"], ["sanctions"]),
-              (("iran", "israel", "lebanon", "gaza", "middle east", "missile", "ceasefire", "hormuz", "red sea"), ["geopolitics", "risk", "xauusd", "oil"], ["geopolitics"]),
-              (("china", "yuan", "renminbi", "pboc", "property"), ["china", "aud", "copper", "risk", "fx"], ["china_macro"]),
-          ]
-
-          HIGH_IMPACT = {
-              "fed", "fomc", "powell", "cpi", "pce", "payrolls", "inflation", "treasury",
-              "yield", "real yield", "sanction", "opec", "brent", "wti", "hormuz",
-              "red sea", "missile", "ceasefire", "china", "yuan", "gold", "central bank",
-          }
-
           def fetch(url, timeout=20):
-              req = urllib.request.Request(url, headers={"User-Agent": BROWSER_USER_AGENT})
+              req = urllib.request.Request(url, headers={"User-Agent": UA})
               with urllib.request.urlopen(req, timeout=timeout) as response:
                   return response.read()
 
-          def fetch_market_symbol(symbol):
-              url = "https://query1.finance.yahoo.com/v8/finance/chart/" + urllib.parse.quote(symbol, safe="") + "?range=5d&interval=1d"
-              try:
-                  req = urllib.request.Request(url, headers={"User-Agent": BROWSER_USER_AGENT})
-                  parsed = json.loads(urllib.request.urlopen(req, timeout=15).read().decode("utf-8", errors="replace"))
-                  result = parsed["chart"]["result"][0]
-                  closes = [value for value in result["indicators"]["quote"][0].get("close", []) if value is not None]
-                  if not closes:
-                      return None
-                  latest = float(result.get("meta", {}).get("regularMarketPrice") or closes[-1])
-                  previous = float(closes[-2]) if len(closes) >= 2 else latest
-                  change = latest - previous
-                  pct = (change / previous * 100) if previous else 0
-                  return {"value": latest, "previous": previous, "change": change, "pct": pct}
-              except Exception as exc:
-                  print(f"Market snapshot skipped for {symbol}: {exc}")
-                  return None
-
-          def fetch_market_snapshot():
-              rows = []
-              for config in MARKET_SYMBOLS:
-                  row = dict(config)
-                  data = fetch_market_symbol(config["symbol"])
-                  if data:
-                      row.update(data)
-                      row["available"] = True
-                  else:
-                      row["available"] = False
-                  rows.append(row)
-              return rows
-
-          def fetch_fred_csv_series(series):
-              url = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=" + urllib.parse.quote(series)
-              try:
-                  req = urllib.request.Request(url, headers={"User-Agent": FRED_USER_AGENT})
-                  text = urllib.request.urlopen(req, timeout=20).read().decode("utf-8", errors="replace")
-                  rows = []
-                  for row in csv.DictReader(StringIO(text)):
-                      value = (row.get(series) or "").strip()
-                      if value and value != ".":
-                          rows.append((row.get("observation_date", ""), float(value)))
-                  if not rows:
-                      return None
-                  latest_date, latest = rows[-1]
-                  previous = rows[-2][1] if len(rows) >= 2 else latest
-                  return {"date": latest_date, "value": latest, "previous": previous, "change": latest - previous}
-              except Exception as exc:
-                  print(f"FRED CSV skipped for {series}: {exc}")
-                  return None
-
-          def fetch_rate_snapshot():
-              rows = []
-              for config in FRED_CSV_SERIES:
-                  row = dict(config)
-                  data = fetch_fred_csv_series(config["series"])
-                  if data:
-                      row.update(data)
-                      row["available"] = True
-                  else:
-                      row["available"] = False
-                  rows.append(row)
-              return rows
-
-          def market_value(row):
-              if not row.get("available"):
-                  return "n/a"
-              value = float(row["value"])
-              if row.get("unit") == "$":
-                  return f"${value:,.2f}"
-              if row.get("unit") == "%":
-                  return f"{value:.2f}%"
-              return f"{value:,.2f}"
-
-          def market_change(row):
-              if not row.get("available"):
-                  return "n/a"
-              change = float(row["change"])
-              pct = float(row["pct"])
-              arrow = "up" if change > 0 else ("down" if change < 0 else "flat")
-              return f"{arrow} {change:+.2f} ({pct:+.2f}%)"
-
-          def rate_value(row):
-              if not row.get("available"):
-                  return "n/a"
-              return f"{float(row['value']):.2f}%"
-
-          def rate_change(row):
-              if not row.get("available"):
-                  return "n/a"
-              change = float(row["change"])
-              arrow = "up" if change > 0 else ("down" if change < 0 else "flat")
-              return f"{arrow} {change:+.2f} pts"
-
-          def parse_nyfed_calendar(horizon_hours=48):
-              url = "https://www.newyorkfed.org/research/calendars/nationalecon_cal"
-              try:
-                  page = fetch(url, timeout=20).decode("utf-8", errors="replace")
-              except Exception as exc:
-                  print(f"NY Fed calendar skipped: {exc}")
-                  return []
-              month_match = re.search(r"([A-Za-z]+)\s+(\d{4})", re.sub(r"<[^>]+>", " ", page[88000:90000]))
-              if not month_match:
-                  return []
-              month_name, year_text = month_match.groups()
-              try:
-                  month_number = datetime.strptime(month_name, "%B").month
-                  year_number = int(year_text)
-              except ValueError:
-                  return []
-              cells = re.findall(r'<td[^>]*class="somatd[^"]*"[^>]*>\s*<div>(.*?)</div>\s*</td>', page, re.S)
-              events = []
-              end = NOW + timedelta(hours=horizon_hours)
-              eastern = timezone(timedelta(hours=-4), "US/Eastern")
-              for cell in cells:
-                  plain = html.unescape(re.sub(r"<[^>]+>", " ", cell))
-                  day_match = re.match(r"\s*(\d{1,2})", plain)
-                  if not day_match:
-                      continue
-                  day = int(day_match.group(1))
-                  for event_match in re.finditer(r"([A-Za-z][A-Za-z0-9 /\-&().]+?)\s*\((\d{2}:\d{2})\)", plain):
-                      name = clean(event_match.group(1), 90)
-                      event_time = event_match.group(2)
-                      try:
-                          event_dt = datetime(year_number, month_number, day, int(event_time[:2]), int(event_time[3:]), tzinfo=eastern).astimezone(TZ)
-                      except Exception:
-                          continue
-                      if NOW <= event_dt <= end:
-                          importance = "Low"
-                          for key, value in CALENDAR_IMPORTANCE.items():
-                              if key.lower() in name.lower():
-                                  importance = value
-                                  break
-                          events.append({"name": name, "time": event_dt.strftime("%Y-%m-%d %H:%M"), "importance": importance})
-              return events[:8]
-
-          def eia_calendar_events(horizon_hours=48):
-              events = []
-              end = NOW + timedelta(hours=horizon_hours)
-              eastern = timezone(timedelta(hours=-4), "US/Eastern")
-              for offset in range(4):
-                  day = (NOW + timedelta(days=offset)).date()
-                  if day.weekday() != 2:
-                      continue
-                  event_dt = datetime(day.year, day.month, day.day, 10, 30, tzinfo=eastern).astimezone(TZ)
-                  if NOW <= event_dt <= end:
-                      events.append({"name": "EIA Weekly Petroleum Status Report", "time": event_dt.strftime("%Y-%m-%d %H:%M"), "importance": "High"})
-              return events
-
-          def calendar_risks():
-              events = parse_nyfed_calendar()
-              events.extend(eia_calendar_events())
-              seen, unique = set(), []
-              for event in sorted(events, key=lambda item: item["time"]):
-                  key = (event["time"], event["name"])
-                  if key not in seen:
-                      seen.add(key)
-                      unique.append(event)
-              priority_events = [event for event in unique if event.get("importance") in {"High", "Medium"}]
-              return priority_events[:6]
-
-          def clean(value, max_chars=260):
-              value = value or ""
-              value = re.sub(r"<[^>]+>", " ", value)
-              value = html.unescape(value)
+          def clean(value, limit=220):
+              value = html.unescape(re.sub(r"<[^>]+>", " ", value or ""))
               value = value.translate(str.maketrans({
                   "\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"',
                   "\u2013": "-", "\u2014": "-", "\u2026": "...", "\u00a0": " ",
               }))
               value = re.sub(r"\s+", " ", value).strip()
-              if len(value) > max_chars:
-                  value = value[:max_chars - 3].rstrip() + "..."
-              return value
-
-          def local_name(tag):
-              return tag.rsplit("}", 1)[-1].lower()
-
-          def child_text(node, name):
-              wanted = name.lower()
-              for child in list(node):
-                  if local_name(child.tag) == wanted:
-                      return (child.text or "").strip()
-              return ""
-
-          def child_attr(node, name, attr):
-              wanted = name.lower()
-              for child in list(node):
-                  if local_name(child.tag) == wanted:
-                      return child.attrib.get(attr, "").strip()
-              return ""
+              return value if len(value) <= limit else value[: limit - 3].rstrip() + "..."
 
           def parse_dt(value):
               if not value:
                   return None
-              value = value.strip()
-              for fmt in ("%Y%m%dT%H%M%SZ", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S%z"):
+              for parser in (
+                  lambda x: datetime.fromisoformat(x.replace("Z", "+00:00")),
+                  email.utils.parsedate_to_datetime,
+              ):
                   try:
-                      dt = datetime.strptime(value, fmt)
-                      if dt.tzinfo is None:
-                          dt = dt.replace(tzinfo=timezone.utc)
-                      return dt.astimezone(timezone.utc)
-                  except ValueError:
+                      dt = parser(value)
+                      return (dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)).astimezone(timezone.utc)
+                  except Exception:
                       pass
-              try:
-                  dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
-                  if dt.tzinfo is None:
-                      dt = dt.replace(tzinfo=timezone.utc)
-                  return dt.astimezone(timezone.utc)
-              except ValueError:
-                  pass
-              try:
-                  dt = email.utils.parsedate_to_datetime(value)
-                  if dt.tzinfo is None:
-                      dt = dt.replace(tzinfo=timezone.utc)
-                  return dt.astimezone(timezone.utc)
-              except Exception:
-                  return None
+              return None
 
-          def contains_term(text, term):
-              term = term.lower()
-              if re.fullmatch(r"[a-z0-9 ]+", term):
-                  pattern = r"(?<![a-z0-9])" + r"\s+".join(re.escape(part) for part in term.split()) + r"(?![a-z0-9])"
-                  return re.search(pattern, text) is not None
-              return term in text
-
-          def normalize(tags):
-              result = []
-              for tag in tags:
-                  tag = str(tag).strip().lower().replace("-", "_").replace(" ", "_")
-                  if tag and tag not in result:
-                      result.append(tag)
-              return result
-
-          def infer_tags(title, summary):
-              text = f"{title} {summary}".lower()
-              assets, drivers = [], []
-              for terms, asset_tags, driver_tags in TAG_RULES:
-                  if any(contains_term(text, term) for term in terms):
-                      assets.extend(asset_tags)
-                      drivers.extend(driver_tags)
-              return normalize(assets), normalize(drivers)
-
-          def reliability(tier):
-              return {"official": 5, "public": 4, "news": 3, "gdelt": 3}.get(tier, 2)
-
-          def transmission(tags):
-              tags = set(tags)
-              parts = []
-              if tags & {"rates", "usd", "inflation"}:
-                  parts.append("watch USD and real-yield reaction")
-              if tags & {"geopolitics", "sanctions", "risk"}:
-                  parts.append("risk premium can rise or fade quickly")
-              if tags & {"oil", "energy"}:
-                  parts.append("oil can feed inflation expectations")
-              if tags & {"xauusd", "gold"}:
-                  parts.append("gold impact depends on USD, real yields, and haven demand")
-              return "; ".join(parts) or "market impact unclear"
+          def tags_for(text):
+              text = text.lower()
+              tags = set()
+              rules = [
+                  (("gold", "xau", "bullion"), ("xauusd", "gold")),
+                  (("fed", "fomc", "powell", "treasury", "yield", "real yield"), ("usd", "rates", "xauusd")),
+                  (("cpi", "pce", "inflation", "payroll", "jobs"), ("usd", "rates", "inflation", "xauusd")),
+                  (("oil", "brent", "wti", "opec", "hormuz", "red sea", "tanker"), ("oil", "energy", "inflation")),
+                  (("sanction", "ofac", "iran", "israel", "lebanon", "gaza", "missile", "ceasefire"), ("geopolitics", "risk", "oil", "xauusd")),
+                  (("china", "yuan", "renminbi", "pboc", "property"), ("china", "fx", "risk")),
+              ]
+              for words, found_tags in rules:
+                  if any(word in text for word in words):
+                      tags.update(found_tags)
+              return sorted(tags)
 
           def bias(title, tags):
               text = title.lower()
               tags = set(tags)
-              if tags & {"geopolitics", "sanctions", "risk"}:
-                  if any(word in text for word in ("talks", "truce", "ceasefire", "progress", "deal")):
-                      return "May reduce gold/oil risk premium if confirmed; fragile talks can reverse quickly."
+              if tags & {"geopolitics", "risk"}:
+                  if any(word in text for word in ("talks", "truce", "ceasefire", "deal", "progress")):
+                      return "May reduce gold/oil risk premium if confirmed; fragile headlines can reverse quickly."
                   return "May support gold/oil risk premium if escalation is confirmed."
-              if tags & {"oil", "energy"}:
-                  return "Energy risk can affect inflation expectations, USD, and commodity FX."
               if tags & {"rates", "usd", "inflation"}:
                   return "Rates/USD-sensitive; check real yields and dollar reaction before drawing a conclusion."
+              if tags & {"oil", "energy"}:
+                  return "Energy risk can affect inflation expectations, USD, and commodity FX."
               if tags & {"gold", "xauusd"}:
                   return "Gold-relevant; direction needs confirmation from USD and real yields."
               return "Context item; market direction unclear."
 
-          def score(item):
-              tags = set(item["asset_tags"] + item["driver_tags"])
+          def score_item(item):
               text = f"{item['title']} {item['summary']}".lower()
-              value = 1
-              if reliability(item["tier"]) >= 5:
-                  value += 1
-              if tags & {"xauusd", "gold", "usd", "rates", "oil", "inflation", "geopolitics", "sanctions"}:
-                  value += 1
-              if any(contains_term(text, term) for term in HIGH_IMPACT):
-                  value += 1
-              item["impact"] = max(1, min(5, value))
-              item["confidence"] = "High" if reliability(item["tier"]) >= 5 else ("Medium" if reliability(item["tier"]) >= 4 or item["source"] == "GDELT" else "Low")
-              item["bias"] = bias(item["title"], tags)
-              item["mechanism"] = transmission(tags)
+              score = 1
+              if item["tier"] == "official":
+                  score += 1
+              if set(item["tags"]) & {"xauusd", "gold", "usd", "rates", "oil", "inflation", "geopolitics", "risk"}:
+                  score += 1
+              if any(word in text for word in ("fed", "fomc", "powell", "cpi", "pce", "payroll", "opec", "hormuz", "red sea", "gold", "real yield")):
+                  score += 1
+              item["impact"] = max(1, min(5, score))
+              item["confidence"] = "High" if item["tier"] == "official" else ("Medium" if item["tier"] in {"public", "gdelt"} else "Low")
+              item["bias"] = bias(item["title"], item["tags"])
               return item
 
-          def make_item(source, title, url, published, summary, extra_tags=None):
-              title = clean(title, 180)
-              summary = clean(summary, 260)
-              inferred_assets, inferred_drivers = infer_tags(title, summary)
-              return score({
-                  "title": title,
-                  "url": url,
-                  "published": published.isoformat() if published else "",
-                  "summary": summary,
-                  "source": source["name"],
-                  "tier": source["tier"],
-                  "asset_tags": normalize(source.get("tags", []) + (extra_tags or []) + inferred_assets),
-                  "driver_tags": inferred_drivers,
-              })
+          def item(source, title, url, published, summary, extra_tags=None):
+              title = clean(title, 170)
+              summary = clean(summary, 220)
+              tags = sorted(set((extra_tags or []) + tags_for(f"{title} {summary}")))
+              return score_item({"source": source[0], "tier": source[2], "title": title, "url": url, "published": published or "", "summary": summary, "tags": tags})
+
+          def child_text(node, name):
+              for child in list(node):
+                  if child.tag.rsplit("}", 1)[-1].lower() == name.lower():
+                      return (child.text or "").strip()
+              return ""
 
           def fetch_rss(source):
               try:
-                  root = ET.fromstring(fetch(source["url"]))
+                  root = ET.fromstring(fetch(source[1]))
               except Exception as exc:
-                  print(f"RSS fetch skipped: {source['id']} - {exc}")
+                  print(f"RSS skipped {source[0]}: {exc}")
                   return []
-              nodes = root.findall(".//item") or [node for node in root.iter() if local_name(node.tag) == "entry"]
-              items = []
+              nodes = root.findall(".//item") or [n for n in root.iter() if n.tag.rsplit("}", 1)[-1].lower() == "entry"]
+              rows = []
               for node in nodes[:12]:
                   title = child_text(node, "title")
-                  link = child_text(node, "link") or child_attr(node, "link", "href")
-                  published = parse_dt(child_text(node, "pubDate") or child_text(node, "published") or child_text(node, "updated"))
-                  if published and published < SINCE:
+                  link = child_text(node, "link") or next((c.attrib.get("href", "") for c in list(node) if c.tag.rsplit("}", 1)[-1].lower() == "link"), "")
+                  published_dt = parse_dt(child_text(node, "pubDate") or child_text(node, "published") or child_text(node, "updated"))
+                  if published_dt and published_dt < SINCE:
                       continue
                   summary = child_text(node, "description") or child_text(node, "summary")
                   if title:
-                      items.append(make_item(source, title, link, published, summary))
-              return items
-
-          def enough_english(title):
-              return len(re.findall(r"[A-Za-z]", clean(title, 180))) >= 12
+                      rows.append(item(source, title, link, published_dt.isoformat() if published_dt else "", summary, source[3]))
+              return rows
 
           def fetch_gdelt(query_id, query):
-              endpoint = "https://api.gdeltproject.org/api/v2/doc/doc"
-              params = urllib.parse.urlencode({
-                  "query": query,
-                  "mode": "ArtList",
-                  "format": "json",
-                  "maxrecords": "8",
-                  "timespan": "24h",
-                  "sort": "HybridRel",
-              })
+              params = urllib.parse.urlencode({"query": query, "mode": "ArtList", "format": "json", "maxrecords": "8", "timespan": "24h", "sort": "HybridRel"})
               try:
-                  payload = fetch(f"{endpoint}?{params}")
-                  parsed = json.loads(payload.decode("utf-8", errors="replace"))
+                  parsed = json.loads(fetch("https://api.gdeltproject.org/api/v2/doc/doc?" + params, 25).decode("utf-8", "replace"))
               except Exception as exc:
-                  print(f"GDELT fetch skipped: {query_id} - {exc}")
+                  print(f"GDELT skipped {query_id}: {exc}")
                   return []
-              source = {"id": "gdelt", "name": "GDELT", "tier": "gdelt", "tags": []}
-              items = []
+              source = ("GDELT", "", "gdelt", [])
+              rows = []
               for article in parsed.get("articles", [])[:8]:
-                  if article.get("language") and article.get("language").lower() != "english":
-                      continue
                   title = article.get("title", "")
-                  if not title or not enough_english(title):
+                  if article.get("language", "english").lower() != "english" or len(re.findall(r"[A-Za-z]", title)) < 12:
                       continue
-                  summary = " ".join(part for part in [
-                      f"Domain: {article.get('domain')}." if article.get("domain") else "",
-                      f"Country: {article.get('sourcecountry')}." if article.get("sourcecountry") else "",
-                  ] if part)
-                  query_tags, _ = infer_tags(query, "")
-                  items.append(make_item(source, title, article.get("url", ""), parse_dt(article.get("seendate", "")), summary, query_tags))
-              return items
+                  summary = " ".join(part for part in [article.get("domain", ""), article.get("sourcecountry", "")] if part)
+                  rows.append(item(source, title, article.get("url", ""), article.get("seendate", ""), summary, tags_for(query)))
+              return rows
 
-          def dedupe(items):
-              seen, result = set(), []
-              for item in sorted(items, key=lambda x: (x["impact"], x.get("published", "")), reverse=True):
-                  key = re.sub(r"[^a-z0-9]+", " ", (item.get("url") or item["title"]).lower()).strip()
-                  if key in seen:
-                      continue
-                  seen.add(key)
-                  result.append(item)
-              return result
+          def dedupe(rows):
+              seen, out = set(), []
+              for row in sorted(rows, key=lambda x: (x["impact"], x["published"]), reverse=True):
+                  key = re.sub(r"[^a-z0-9]+", " ", (row.get("url") or row["title"]).lower()).strip()
+                  if key not in seen:
+                      seen.add(key)
+                      out.append(row)
+              return out
 
-          def with_tags(items, tags, limit):
+          def yahoo(symbol):
+              url = "https://query1.finance.yahoo.com/v8/finance/chart/" + urllib.parse.quote(symbol, safe="") + "?range=5d&interval=1d"
+              try:
+                  parsed = json.loads(fetch(url, 15).decode("utf-8", "replace"))
+                  result = parsed["chart"]["result"][0]
+                  closes = [v for v in result["indicators"]["quote"][0].get("close", []) if v is not None]
+                  latest = float(result.get("meta", {}).get("regularMarketPrice") or closes[-1])
+                  previous = float(closes[-2]) if len(closes) >= 2 else latest
+                  return latest, latest - previous, ((latest - previous) / previous * 100) if previous else 0
+              except Exception as exc:
+                  print(f"Market skipped {symbol}: {exc}")
+                  return None
+
+          def fred(series):
+              try:
+                  text = fetch("https://fred.stlouisfed.org/graph/fredgraph.csv?id=" + urllib.parse.quote(series), 20).decode("utf-8", "replace")
+                  values = [(r.get("observation_date", ""), float(r[series])) for r in csv.DictReader(StringIO(text)) if r.get(series) not in {"", "."}]
+                  date, latest = values[-1]
+                  previous = values[-2][1] if len(values) > 1 else latest
+                  return date, latest, latest - previous
+              except Exception as exc:
+                  print(f"FRED skipped {series}: {exc}")
+                  return None
+
+          def market_rows():
+              rows = []
+              for label, symbol, unit in MARKET:
+                  data = yahoo(symbol)
+                  rows.append({"label": label, "unit": unit, "data": data})
+              return rows
+
+          def rate_rows():
+              return [{"label": label, "data": fred(series)} for label, series in FRED]
+
+          def calendar_events():
+              events = []
+              eastern = timezone(timedelta(hours=-4), "US/Eastern")
+              end = NOW + timedelta(hours=48)
+              try:
+                  page = fetch("https://www.newyorkfed.org/research/calendars/nationalecon_cal", 20).decode("utf-8", "replace")
+                  month_match = re.search(r"([A-Za-z]+)\s+(\d{4})", re.sub(r"<[^>]+>", " ", page[88000:90000]))
+                  if month_match:
+                      month = datetime.strptime(month_match.group(1), "%B").month
+                      year = int(month_match.group(2))
+                      cells = re.findall(r'<td[^>]*class="somatd[^"]*"[^>]*>\s*<div>(.*?)</div>\s*</td>', page, re.S)
+                      for cell in cells:
+                          plain = html.unescape(re.sub(r"<[^>]+>", " ", cell))
+                          day_match = re.match(r"\s*(\d{1,2})", plain)
+                          if not day_match:
+                              continue
+                          day = int(day_match.group(1))
+                          for match in re.finditer(r"([A-Za-z][A-Za-z0-9 /\-&().]+?)\s*\((\d{2}:\d{2})\)", plain):
+                              name = clean(match.group(1), 90)
+                              hhmm = match.group(2)
+                              dt = datetime(year, month, day, int(hhmm[:2]), int(hhmm[3:]), tzinfo=eastern).astimezone(TZ)
+                              if NOW <= dt <= end:
+                                  importance = next((v for k, v in IMPORTANT_CALENDAR.items() if k.lower() in name.lower()), "Low")
+                                  if importance in {"High", "Medium"}:
+                                      events.append({"name": name, "time": dt.strftime("%Y-%m-%d %H:%M"), "importance": importance})
+              except Exception as exc:
+                  print(f"Calendar skipped: {exc}")
+              for offset in range(4):
+                  day = (NOW + timedelta(days=offset)).date()
+                  if day.weekday() == 2:
+                      dt = datetime(day.year, day.month, day.day, 10, 30, tzinfo=eastern).astimezone(TZ)
+                      if NOW <= dt <= end:
+                          events.append({"name": "EIA Weekly Petroleum Status Report", "time": dt.strftime("%Y-%m-%d %H:%M"), "importance": "High"})
+              return sorted(events, key=lambda e: e["time"])[:6]
+
+          def filter_items(rows, tags, limit):
               tags = set(tags)
-              matches = []
-              for item in items:
-                  item_tags = set(item["asset_tags"] + item["driver_tags"])
-                  if item_tags & tags:
-                      matches.append(item)
-                  if len(matches) >= limit:
-                      break
-              return matches
+              return [r for r in rows if set(r["tags"]) & tags][:limit]
 
-          def email_relevant(items, limit):
-              return with_tags(items, {"xauusd", "gold", "usd", "rates", "oil", "inflation", "sanctions", "geopolitics"}, limit)
-
-          def desk_score(items, tags):
-              scores = [item["impact"] for item in items if set(item["asset_tags"] + item["driver_tags"]) & set(tags)]
+          def desk_score(rows, tags):
+              scores = [r["impact"] for r in rows if set(r["tags"]) & set(tags)]
               return max(scores) if scores else 1
 
-          def risk_mix(items):
-              buckets = [
-                  ("Gold / Rates", {"xauusd", "gold", "rates", "usd"}),
-                  ("Oil / Inflation", {"oil", "energy", "inflation"}),
-                  ("Geo Risk", {"geopolitics", "sanctions", "risk"}),
-                  ("China / Growth", {"china", "copper", "aud", "fx"}),
-              ]
-              result = []
-              for label, tags in buckets:
-                  count = 0
-                  for item in items:
-                      if set(item["asset_tags"] + item["driver_tags"]) & tags:
-                          count += 1
-                  result.append((label, count))
-              return result
+          def signal_scores(rows):
+              return {
+                  "xauusd_gold": desk_score(rows, {"xauusd", "gold", "usd", "rates"}),
+                  "usd_rates": desk_score(rows, {"usd", "rates", "inflation"}),
+                  "oil_inflation": desk_score(rows, {"oil", "energy", "inflation"}),
+                  "geo_risk": desk_score(rows, {"geopolitics", "risk"}),
+              }
 
-          def xauusd_bias(items):
-              xau = with_tags(items, {"xauusd", "gold", "rates", "usd", "oil", "sanctions", "geopolitics"}, 8)
-              if not xau:
-                  return "No clear XAUUSD signal in this run."
-              text = " ".join((item["bias"] + " " + item["title"]).lower() for item in xau)
-              supportive = sum(1 for word in ("support", "risk premium", "oil risk", "safe-haven") if word in text)
-              negative = sum(1 for word in ("reduce", "negative", "real yields", "stronger usd", "hawkish") if word in text)
-              if supportive > negative + 1:
+          def xauusd_bias(rows):
+              xau = filter_items(rows, {"xauusd", "gold", "rates", "usd", "oil", "geopolitics", "risk"}, 8)
+              text = " ".join((r["bias"] + " " + r["title"]).lower() for r in xau)
+              support = sum(w in text for w in ("support", "risk premium", "safe-haven"))
+              negative = sum(w in text for w in ("reduce", "negative", "real yields", "stronger usd", "hawkish"))
+              if support > negative + 1:
                   return "XAUUSD bias: supportive, mainly through risk-premium or inflation channels. Confirm with USD and real yields."
-              if negative > supportive + 1:
+              if negative > support + 1:
                   return "XAUUSD bias: pressured, mainly through USD/rates channels. Confirm with real yields and dollar strength."
               return "XAUUSD bias: mixed. Risk-premium headlines and USD/rates confirmation are pulling against each other."
 
-          def current_state(items):
-              return {
-                  "generated_at": NOW.isoformat(),
-                  "scores": {
-                      "xauusd_gold": desk_score(items, {"xauusd", "gold", "usd", "rates"}),
-                      "usd_rates": desk_score(items, {"usd", "rates", "inflation"}),
-                      "oil_inflation": desk_score(items, {"oil", "energy", "inflation"}),
-                      "geo_risk": desk_score(items, {"geopolitics", "sanctions", "risk"}),
-                  },
-                  "xauusd_bias": xauusd_bias(items),
-              }
+          def fmt_market(row):
+              if not row["data"]:
+                  return "n/a", "n/a"
+              value, change, pct = row["data"]
+              val = f"${value:,.2f}" if row["unit"] == "$" else (f"{value:.2f}%" if row["unit"] == "%" else f"{value:,.2f}")
+              move = "up" if change > 0 else ("down" if change < 0 else "flat")
+              return val, f"{move} {change:+.2f} ({pct:+.2f}%)"
 
-          def load_previous_state():
+          def fmt_rate(row):
+              if not row["data"]:
+                  return "n/a", "n/a"
+              _, value, change = row["data"]
+              move = "up" if change > 0 else ("down" if change < 0 else "flat")
+              return f"{value:.2f}%", f"{move} {change:+.2f} pts"
+
+          def load_previous():
               try:
-                  if STATE_PATH.exists():
-                      return json.loads(STATE_PATH.read_text(encoding="utf-8"))
-              except Exception as exc:
-                  print(f"Previous state skipped: {exc}")
-              return None
+                  return json.loads(STATE_PATH.read_text(encoding="utf-8"))
+              except Exception:
+                  return None
 
-          def save_state(state):
+          def save_state(rows):
               STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-              STATE_PATH.write_text(json.dumps(state, indent=2), encoding="utf-8")
+              STATE_PATH.write_text(json.dumps({"generated_at": NOW.isoformat(), "scores": signal_scores(rows), "xauusd_bias": xauusd_bias(rows)}, indent=2), encoding="utf-8")
 
-          def heat(value):
-              if value >= 4:
-                  return "High", "#fee2e2", "#991b1b"
-              if value >= 3:
-                  return "Medium", "#fef3c7", "#92400e"
-              return "Low", "#dcfce7", "#166534"
+          def card_table(rows, formatter):
+              cells = []
+              for row in rows:
+                  value, change = formatter(row)
+                  color = "#166534" if "up" in change or "down -0" in change else ("#991b1b" if "down" in change or "up +" in change else "#64748b")
+                  cells.append(f'<td style="padding:10px;border:1px solid #e2e8f0;border-radius:10px;"><div style="font-size:12px;color:#64748b;">{html.escape(row["label"])}</div><div style="font-size:18px;font-weight:bold;margin:6px 0;">{html.escape(value)}</div><div style="font-size:12px;color:{color};">{html.escape(change)}</div></td>')
+              return '<table role="presentation" style="width:100%;border-collapse:separate;border-spacing:8px;"><tr>' + "".join(cells) + "</tr></table>"
 
-          def badge(value):
-              label, bg, fg = heat(value)
-              return f'<span style="display:inline-block;padding:5px 10px;border-radius:999px;background:{bg};color:{fg};font-size:12px;font-weight:bold;">{label}</span>'
+          def item_html(rows):
+              return "".join(f'<li style="margin:10px 0;"><strong>{html.escape(r["title"])}</strong><br><span style="color:#475569;">{html.escape(r["bias"])}</span><br><span style="font-size:12px;color:#64748b;">Impact {r["impact"]}/5 | Confidence {html.escape(r["confidence"])}</span></li>' for r in rows)
 
-          def dashboard_cell(label, value, note):
-              return f"""
-              <td style="width:50%;padding:10px;border:1px solid #e2e8f0;border-radius:10px;vertical-align:top;">
-                <div style="font-size:13px;color:#64748b;">{html.escape(label)}</div>
-                <div style="margin:8px 0;">{badge(value)}</div>
-                <div style="font-size:12px;color:#475569;line-height:1.35;">{html.escape(note)}</div>
-              </td>"""
-
-          def market_cell(row):
-              change = market_change(row)
-              color = "#166534" if "up" in change else ("#991b1b" if "down" in change else "#64748b")
-              return f"""
-              <td style="width:25%;padding:10px;border:1px solid #e2e8f0;border-radius:10px;vertical-align:top;">
-                <div style="font-size:12px;color:#64748b;">{html.escape(row["label"])}</div>
-                <div style="font-size:18px;font-weight:bold;margin:6px 0;">{html.escape(market_value(row))}</div>
-                <div style="font-size:12px;color:{color};">{html.escape(change)}</div>
-              </td>"""
-
-          def rate_cell(row):
-              change = rate_change(row)
-              color = "#991b1b" if "up" in change else ("#166534" if "down" in change else "#64748b")
-              return f"""
-              <td style="width:50%;padding:10px;border:1px solid #e2e8f0;border-radius:10px;vertical-align:top;">
-                <div style="font-size:12px;color:#64748b;">{html.escape(row["label"])}</div>
-                <div style="font-size:18px;font-weight:bold;margin:6px 0;">{html.escape(rate_value(row))}</div>
-                <div style="font-size:12px;color:{color};">{html.escape(change)}</div>
-              </td>"""
-
-          def calendar_html(events):
-              if not events:
-                  return '<p style="margin:0;color:#64748b;">No high-priority calendar risks found in the next 48 hours.</p>'
-              colors = {"High": "#991b1b", "Medium": "#92400e", "Low": "#475569"}
-              rows = []
-              for event in events:
-                  color = colors.get(event["importance"], "#475569")
-                  rows.append(f"""
-                  <li style="margin:8px 0;">
-                    <strong>{html.escape(event["name"])}</strong><br>
-                    <span style="color:#475569;">{html.escape(event["time"])} Asia/Beirut</span>
-                    <span style="color:{color};font-size:12px;font-weight:bold;">{html.escape(event["importance"])}</span>
-                  </li>""")
-              return '<ul style="margin:0;padding-left:20px;color:#334155;line-height:1.45;">' + "".join(rows) + "</ul>"
-
-          def risk_mix_html(items):
-              mix = [(label, count) for label, count in risk_mix(items) if count]
-              if not mix:
-                  return '<p style="margin:0;color:#64748b;">No clean signal mix available for this run.</p>'
-              total = sum(count for _, count in mix) or 1
-              colors = ["#d97706", "#dc2626", "#7c3aed", "#2563eb"]
-              segments, labels = [], []
-              cursor = 0.0
-              for i, (label, count) in enumerate(mix):
-                  share = count / total * 100
-                  next_cursor = cursor + share
-                  segments.append(f"{colors[i]} {cursor:.1f}% {next_cursor:.1f}%")
-                  labels.append(
-                      "<tr>"
-                      f'<td style="padding:3px 8px 3px 0;"><span style="display:inline-block;width:10px;height:10px;background:{colors[i]};border-radius:50%;"></span></td>'
-                      f'<td style="padding:3px 0;color:#334155;font-size:13px;">{html.escape(label)}</td>'
-                      f'<td style="padding:3px 0 3px 12px;color:#64748b;font-size:13px;text-align:right;">{count} ({share:.0f}%)</td>'
-                      "</tr>"
-                  )
-                  cursor = next_cursor
-              return (
-                  '<table role="presentation" style="width:100%;border-collapse:collapse;"><tr>'
-                  '<td style="width:130px;vertical-align:top;padding-right:18px;">'
-                  f'<div style="width:112px;height:112px;border-radius:50%;background:conic-gradient({", ".join(segments)});border:1px solid #e2e8f0;"></div>'
-                  '</td><td style="vertical-align:middle;">'
-                  '<table role="presentation" style="width:100%;border-collapse:collapse;">'
-                  + "".join(labels)
-                  + "</table></td></tr></table>"
-              )
-
-          def previous_change_html(previous, state):
-              if not previous:
-                  return "<p style='margin:0;color:#64748b;'>No previous run stored yet. This will start tracking after the first real digest.</p>"
-              rows = []
-              labels = {
-                  "xauusd_gold": "XAUUSD / Gold",
-                  "usd_rates": "USD / Rates",
-                  "oil_inflation": "Oil / Inflation",
-                  "geo_risk": "Geo Risk",
-              }
-              prev_scores = previous.get("scores", {})
-              for key, label in labels.items():
-                  old = int(prev_scores.get(key, state["scores"][key]))
-                  new = int(state["scores"][key])
-                  move = "higher" if new > old else ("lower" if new < old else "flat")
-                  color = "#991b1b" if new > old else ("#166534" if new < old else "#64748b")
-                  width = max(10, min(100, new * 20))
-                  rows.append(
-                      "<tr>"
-                      f'<td style="width:140px;padding:6px 10px 6px 0;color:#334155;font-size:13px;">{html.escape(label)}</td>'
-                      f'<td style="width:74px;padding:6px 8px;color:#64748b;font-size:13px;text-align:right;">{old}/5 -> {new}/5</td>'
-                      '<td style="padding:6px 0;">'
-                      '<div style="height:9px;background:#e5e7eb;border-radius:999px;overflow:hidden;">'
-                      f'<div style="height:9px;width:{width}%;background:{color};border-radius:999px;"></div>'
-                      "</div>"
-                      f'<div style="margin-top:3px;color:{color};font-size:11px;">{move}</div>'
-                      "</td></tr>"
-                  )
-              return '<table role="presentation" style="width:100%;border-collapse:collapse;">' + "".join(rows) + "</table>"
-
-          def previous_change_text(previous, state):
-              if not previous:
-                  return "- No previous run stored yet. This will start tracking after the first real digest."
-              rows = []
-              labels = {
-                  "xauusd_gold": "XAUUSD / Gold",
-                  "usd_rates": "USD / Rates",
-                  "oil_inflation": "Oil / Inflation",
-                  "geo_risk": "Geo Risk",
-              }
-              prev_scores = previous.get("scores", {})
-              for key, label in labels.items():
-                  old = int(prev_scores.get(key, state["scores"][key]))
-                  new = int(state["scores"][key])
-                  move = "higher" if new > old else ("lower" if new < old else "flat")
-                  rows.append(f"- {label}: {old}/5 -> {new}/5 ({move})")
-              return chr(10).join(rows)
-
-          def item_html(item):
-              return f"""
-              <li style="margin:10px 0;">
-                <strong>{html.escape(item['title'])}</strong><br>
-                <span style="color:#475569;">{html.escape(item['bias'])}</span><br>
-                <span style="font-size:12px;color:#64748b;">Impact {item['impact']}/5 | Confidence {html.escape(item['confidence'])}</span>
-              </li>"""
-
-          def item_text(item):
-              return f"- {item['title']}: {item['bias']} (Impact {item['impact']}/5, {item['confidence']})"
-
-          def build_email(items, market_rows, rate_rows, calendar_events, previous, state):
-              top = email_relevant(items, 3)
-              xau = with_tags(items, {"xauusd", "gold", "rates", "usd", "real_yields", "oil", "sanctions", "geopolitics"}, 3)
-              rates = with_tags(items, {"rates", "fed", "inflation", "real_yields", "usd"}, 2)
+          def build_email(rows, mr, rr, cal, prev):
+              scores = signal_scores(rows)
+              top = filter_items(rows, {"xauusd", "gold", "usd", "rates", "oil", "inflation", "geopolitics", "risk"}, 3)
+              xau = filter_items(rows, {"xauusd", "gold", "rates", "usd", "oil", "geopolitics", "risk"}, 3)
+              rates = filter_items(rows, {"rates", "usd", "inflation"}, 2)
               bottom = f"{top[0]['title']}: {top[0]['bias']}" if top else "No high-quality market-moving items were collected in this run."
-              generated = NOW.strftime("%Y-%m-%d %H:%M Asia/Beirut")
+              prev_scores = (prev or {}).get("scores", {})
+              change_lines = []
+              for key, label in {"xauusd_gold": "XAUUSD / Gold", "usd_rates": "USD / Rates", "oil_inflation": "Oil / Inflation", "geo_risk": "Geo Risk"}.items():
+                  old, new = int(prev_scores.get(key, scores[key])), scores[key]
+                  move = "higher" if new > old else ("lower" if new < old else "flat")
+                  change_lines.append(f"- {label}: {old}/5 -> {new}/5 ({move})")
+              cal_text = "\n".join(f"- {e['time']} Asia/Beirut | {e['importance']} | {e['name']}" for e in cal) or "- No high-priority calendar risks found in the next 48 hours."
               text = f"""Market Intelligence Brief
 
-          {generated}
+{NOW:%Y-%m-%d %H:%M} Asia/Beirut
 
-          Bottom Line
-          {bottom}
+Bottom Line
+{bottom}
 
-          Market Snapshot
-          {chr(10).join(f"- {row['label']}: {market_value(row)} | {market_change(row)}" for row in market_rows)}
+Market Snapshot
+{chr(10).join(f"- {r['label']}: {fmt_market(r)[0]} | {fmt_market(r)[1]}" for r in mr)}
 
-          Real Yield Snapshot
-          {chr(10).join(f"- {row['label']}: {rate_value(row)} | {rate_change(row)}" for row in rate_rows)}
+Real Yield Snapshot
+{chr(10).join(f"- {r['label']}: {fmt_rate(r)[0]} | {fmt_rate(r)[1]}" for r in rr)}
 
-          Calendar Risk - Next 48h
-          {chr(10).join(f"- {event['time']} Asia/Beirut | {event['importance']} | {event['name']}" for event in calendar_events) or "- No high-priority calendar risks found in the next 48 hours."}
+Calendar Risk - Next 48h
+{cal_text}
 
-          Change Since Previous Digest
-          {previous_change_text(previous, state)}
+Change Since Previous Digest
+{chr(10).join(change_lines) if prev else "- No previous run stored yet. This will start tracking after the first real digest."}
 
-          What Matters
-          {chr(10).join(item_text(item) for item in top) or "- No major items collected."}
+What Matters
+{chr(10).join(f"- {r['title']}: {r['bias']} (Impact {r['impact']}/5, {r['confidence']})" for r in top) or "- No major items collected."}
 
-          XAUUSD Read
-          {chr(10).join(item_text(item) for item in xau) or "- No clean XAUUSD signal in this run."}
+XAUUSD Bias
+{xauusd_bias(rows)}
 
-          XAUUSD Bias
-          {xauusd_bias(items)}
+Action
+- Treat this as context, not a trade signal.
+- Before acting, check live XAUUSD, USD, real yields, oil, and session liquidity.
 
-          USD / Rates Watch
-          {chr(10).join(item_text(item) for item in rates) or "- No major USD/rates item collected."}
-
-          Action
-          - Treat this as context, not a trade signal.
-          - Before acting, check live XAUUSD, USD, real yields, oil, and session liquidity.
-
-          Invalidation
-          This read weakens if live prices do not confirm the headline channel, official sources contradict the story, or USD/real yields move against the implied gold direction.
-          """
-              html_body = f"""<!doctype html>
-          <html>
-            <body style="margin:0;background:#f6f8fb;font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
-              <div style="max-width:760px;margin:0 auto;padding:24px;">
-                <div style="background:#0f172a;color:#fff;border-radius:12px;padding:22px 24px;">
-                  <div style="font-size:13px;color:#cbd5e1;">{html.escape(generated)}</div>
-                  <h1 style="margin:8px 0 0;font-size:24px;line-height:1.2;">Market Intelligence Brief</h1>
-                </div>
-
-                <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px;margin-top:16px;">
-                  <h2 style="margin:0 0 8px;font-size:17px;">Bottom Line</h2>
-                  <p style="margin:0;color:#334155;line-height:1.5;">{html.escape(bottom)}</p>
-                </div>
-
-                <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px;margin-top:16px;">
-                  <h2 style="margin:0 0 12px;font-size:17px;">Market Snapshot</h2>
-                  <table role="presentation" style="width:100%;border-collapse:separate;border-spacing:8px;"><tr>{''.join(market_cell(row) for row in market_rows)}</tr></table>
-                </div>
-
-                <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px;margin-top:16px;">
-                  <h2 style="margin:0 0 12px;font-size:17px;">Real Yield Snapshot</h2>
-                  <table role="presentation" style="width:100%;border-collapse:separate;border-spacing:8px;"><tr>{''.join(rate_cell(row) for row in rate_rows)}</tr></table>
-                </div>
-
-                <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px;margin-top:16px;">
-                  <h2 style="margin:0 0 12px;font-size:17px;">Signal Dashboard</h2>
-                  <table role="presentation" style="width:100%;border-collapse:separate;border-spacing:8px;">
-                    <tr>
-                      {dashboard_cell("XAUUSD / Gold", desk_score(items, {"xauusd", "gold", "usd", "rates"}), "Needs USD and real-yield confirmation.")}
-                      {dashboard_cell("USD / Rates", desk_score(items, {"usd", "rates", "inflation"}), "Watch yields, Fed path, and dollar reaction.")}
-                    </tr>
-                    <tr>
-                      {dashboard_cell("Oil / Inflation", desk_score(items, {"oil", "energy", "inflation"}), "Energy shocks can feed inflation expectations.")}
-                      {dashboard_cell("Geo Risk", desk_score(items, {"geopolitics", "sanctions", "risk"}), "Separate escalation from de-escalation headlines.")}
-                    </tr>
-                  </table>
-                </div>
-
-                <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px;margin-top:16px;">
-                  <h2 style="margin:0 0 12px;font-size:17px;">Change Since Previous Digest</h2>
-                  {previous_change_html(previous, state)}
-                </div>
-
-                <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px;margin-top:16px;">
-                  <h2 style="margin:0 0 12px;font-size:17px;">Signal Mix</h2>
-                  {risk_mix_html(items)}
-                </div>
-
-                <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px;margin-top:16px;">
-                  <h2 style="margin:0 0 12px;font-size:17px;">Calendar Risk - Next 48h</h2>
-                  {calendar_html(calendar_events)}
-                </div>
-
-                <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px;margin-top:16px;">
-                  <h2 style="margin:0 0 8px;font-size:17px;">What Matters</h2>
-                  <ol style="padding-left:20px;margin:0;color:#334155;line-height:1.45;">{''.join(item_html(item) for item in top) or '<li>No major items collected.</li>'}</ol>
-                </div>
-
-                <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px;margin-top:16px;">
-                  <h2 style="margin:0 0 8px;font-size:17px;">XAUUSD Read</h2>
-                  <ul style="padding-left:20px;margin:0;color:#334155;line-height:1.45;">{''.join(item_html(item) for item in xau) or '<li>No clean XAUUSD signal in this run.</li>'}</ul>
-                  <p style="margin:12px 0 0;color:#0f172a;line-height:1.45;"><strong>{html.escape(xauusd_bias(items))}</strong></p>
-                </div>
-
-                <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px;margin-top:16px;">
-                  <h2 style="margin:0 0 8px;font-size:17px;">USD / Rates Watch</h2>
-                  <ul style="padding-left:20px;margin:0;color:#334155;line-height:1.45;">{''.join(item_html(item) for item in rates) or '<li>No major USD/rates item collected.</li>'}</ul>
-                </div>
-
-                <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px;margin-top:16px;">
-                  <h2 style="margin:0 0 8px;font-size:17px;">Action</h2>
-                  <p style="margin:0;color:#334155;line-height:1.5;">Treat this as context, not a trade signal. Before acting, check live XAUUSD, USD, real yields, oil, and session liquidity.</p>
-                </div>
-
-                <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px;margin-top:16px;">
-                  <h2 style="margin:0 0 8px;font-size:17px;">Invalidation</h2>
-                  <p style="margin:0;color:#334155;line-height:1.5;">This read weakens if live prices do not confirm the headline channel, official sources contradict the story, or USD/real yields move against the implied gold direction.</p>
-                </div>
-
-                <p style="font-size:12px;color:#64748b;margin:16px 4px 0;">No source links in this email. Ask Codex for details if needed.</p>
-              </div>
-            </body>
-          </html>"""
+Invalidation
+This read weakens if live prices do not confirm the headline channel, official sources contradict the story, or USD/real yields move against the implied gold direction.
+"""
+              score_cells = "".join(f'<td style="padding:10px;border:1px solid #e2e8f0;border-radius:10px;"><div style="font-size:13px;color:#64748b;">{label}</div><div style="margin:8px 0;"><strong>{scores[key]}/5</strong></div></td>' for key, label in {"xauusd_gold": "XAUUSD / Gold", "usd_rates": "USD / Rates", "oil_inflation": "Oil / Inflation", "geo_risk": "Geo Risk"}.items())
+              change_html = "<p style='margin:0;color:#64748b;'>No previous run stored yet. This will start tracking after the first real digest.</p>" if not prev else "<ul style='margin:0;padding-left:20px;color:#334155;line-height:1.5;'>" + "".join(f"<li>{html.escape(line[2:])}</li>" for line in change_lines) + "</ul>"
+              cal_html = "<p style='margin:0;color:#64748b;'>No high-priority calendar risks found in the next 48 hours.</p>" if not cal else "<ul style='margin:0;padding-left:20px;color:#334155;line-height:1.45;'>" + "".join(f"<li><strong>{html.escape(e['name'])}</strong><br><span style='color:#475569;'>{html.escape(e['time'])} Asia/Beirut</span> <strong>{html.escape(e['importance'])}</strong></li>" for e in cal) + "</ul>"
+              section = lambda title, body: f'<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px;margin-top:16px;"><h2 style="margin:0 0 12px;font-size:17px;">{title}</h2>{body}</div>'
+              html_body = f"""<!doctype html><html><body style="margin:0;background:#f6f8fb;font-family:Arial,Helvetica,sans-serif;color:#0f172a;"><div style="max-width:760px;margin:0 auto;padding:24px;"><div style="background:#0f172a;color:#fff;border-radius:12px;padding:22px 24px;"><div style="font-size:13px;color:#cbd5e1;">{NOW:%Y-%m-%d %H:%M} Asia/Beirut</div><h1 style="margin:8px 0 0;font-size:24px;">Market Intelligence Brief</h1></div>{section("Bottom Line", f'<p style="margin:0;color:#334155;line-height:1.5;">{html.escape(bottom)}</p>')}{section("Market Snapshot", card_table(mr, fmt_market))}{section("Real Yield Snapshot", card_table(rr, fmt_rate))}{section("Signal Dashboard", '<table role="presentation" style="width:100%;border-collapse:separate;border-spacing:8px;"><tr>' + score_cells + '</tr></table>')}{section("Change Since Previous Digest", change_html)}{section("Calendar Risk - Next 48h", cal_html)}{section("What Matters", '<ol style="padding-left:20px;margin:0;color:#334155;line-height:1.45;">' + (item_html(top) or '<li>No major items collected.</li>') + '</ol>')}{section("XAUUSD Read", '<ul style="padding-left:20px;margin:0;color:#334155;line-height:1.45;">' + (item_html(xau) or '<li>No clean XAUUSD signal in this run.</li>') + '</ul><p style="margin:12px 0 0;"><strong>' + html.escape(xauusd_bias(rows)) + '</strong></p>')}{section("USD / Rates Watch", '<ul style="padding-left:20px;margin:0;color:#334155;line-height:1.45;">' + (item_html(rates) or '<li>No major USD/rates item collected.</li>') + '</ul>')}{section("Action", '<p style="margin:0;color:#334155;line-height:1.5;">Treat this as context, not a trade signal. Before acting, check live XAUUSD, USD, real yields, oil, and session liquidity.</p>')}{section("Invalidation", '<p style="margin:0;color:#334155;line-height:1.5;">This read weakens if live prices do not confirm the headline channel, official sources contradict the story, or USD/real yields move against the implied gold direction.</p>')}<p style="font-size:12px;color:#64748b;margin:16px 4px 0;">No source links in this email. Ask Codex for details if needed.</p></div></body></html>"""
               return text, html_body
 
-          def send_email(text, html_body):
-              required = ["SMTP_HOST", "SMTP_PORT", "SMTP_USERNAME", "SMTP_PASSWORD", "SMTP_FROM", "EMAIL_TO"]
-              missing = [name for name in required if not os.environ.get(name)]
-              if missing:
-                  raise SystemExit(f"Missing secrets/env values: {', '.join(missing)}")
-              msg = EmailMessage()
-              msg["From"] = os.environ["SMTP_FROM"]
-              msg["To"] = os.environ["EMAIL_TO"]
-              msg["Subject"] = f"Market Intelligence Digest - {NOW.strftime('%Y-%m-%d %H:%M')} Asia/Beirut"
-              msg.set_content(text)
-              msg.add_alternative(html_body, subtype="html")
-              with smtplib.SMTP_SSL(os.environ["SMTP_HOST"], int(os.environ["SMTP_PORT"]), timeout=30) as smtp:
-                  smtp.login(os.environ["SMTP_USERNAME"], os.environ["SMTP_PASSWORD"])
-                  smtp.send_message(msg)
-
-          items = []
-          for source in RSS_SOURCES:
-              items.extend(fetch_rss(source))
-
-          for query_id, query in GDELT_QUERIES:
-              items.extend(fetch_gdelt(query_id, query))
-              time.sleep(3)
-
-          items = dedupe(items)
-          market_rows = fetch_market_snapshot()
-          rate_rows = fetch_rate_snapshot()
-          calendar_events = calendar_risks()
-          previous = load_previous_state()
-          state = current_state(items)
-          text_body, html_body = build_email(items, market_rows, rate_rows, calendar_events, previous, state)
-          send_email(text_body, html_body)
-          save_state(state)
-          print(f"Sent digest with {len(items)} collected items.")
+          rows = []
+          for source in RSS:
+              rows.extend(fetch_rss(source))
+          for query_id, query in GDELT:
+              rows.extend(fetch_gdelt(query_id, query))
+              time.sleep(2)
+          rows = dedupe(rows)
+          mr, rr, cal = market_rows(), rate_rows(), calendar_events()
+          previous = load_previous()
+          text_body, html_body = build_email(rows, mr, rr, cal, previous)
+          required = ["SMTP_HOST", "SMTP_PORT", "SMTP_USERNAME", "SMTP_PASSWORD", "SMTP_FROM", "EMAIL_TO"]
+          missing = [name for name in required if not os.environ.get(name)]
+          if missing:
+              raise SystemExit("Missing secrets/env values: " + ", ".join(missing))
+          msg = EmailMessage()
+          msg["From"] = os.environ["SMTP_FROM"]
+          msg["To"] = os.environ["EMAIL_TO"]
+          msg["Subject"] = f"Market Intelligence Digest - {NOW:%Y-%m-%d %H:%M} Asia/Beirut"
+          msg.set_content(text_body)
+          msg.add_alternative(html_body, subtype="html")
+          with smtplib.SMTP_SSL(os.environ["SMTP_HOST"], int(os.environ["SMTP_PORT"]), timeout=30) as smtp:
+              smtp.login(os.environ["SMTP_USERNAME"], os.environ["SMTP_PASSWORD"])
+              smtp.send_message(msg)
+          save_state(rows)
+          print(f"Sent digest with {len(rows)} collected items.")
           PY
 
       - name: Save digest state
         if: steps.beirut_time.outputs.send == 'true'
+        env:
+          SEND_SLOT: ${{ steps.beirut_time.outputs.send_slot }}
         run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          slot = os.environ.get("SEND_SLOT", "")
+          if slot and not slot.startswith("manual-"):
+              path = Path(".digest-state/send-slots.json")
+              path.parent.mkdir(parents=True, exist_ok=True)
+              try:
+                  data = json.loads(path.read_text(encoding="utf-8"))
+              except Exception:
+                  data = {}
+              slots = data.get("sent_slots", [])
+              if slot not in slots:
+                  slots.append(slot)
+              data["sent_slots"] = slots[-60:]
+              path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+          PY
           git config user.name "market-intel-bot"
           git config user.email "market-intel-bot@example.com"
-          git add .digest-state/latest.json
+          git add .digest-state/latest.json .digest-state/send-slots.json
           git commit -m "Update market digest state" || echo "No state changes to commit"
           git push
