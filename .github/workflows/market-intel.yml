@@ -2,8 +2,6 @@ name: Market Intelligence Digest
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
   schedule:
     # GitHub schedules can run late or skip individual ticks. Wake often,
     # then send once per Beirut target slot with a grace window.
