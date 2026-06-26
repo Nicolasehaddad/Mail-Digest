@@ -1,0 +1,291 @@
+{
+  "generated_at": "2026-06-26T18:19:14.706561+03:00",
+  "markets": {
+    "xauusd": {
+      "label": "XAUUSD",
+      "symbol": "GC=F",
+      "unit": "$",
+      "decimals": 1,
+      "available": true,
+      "error": "",
+      "value": 4092.89990234375,
+      "previous": 4030.5,
+      "change": 62.39990234375,
+      "pct": 1.548192590094281,
+      "support": 4041.199951171875,
+      "resistance": 4108.7001953125
+    },
+    "xagusd": {
+      "label": "XAGUSD",
+      "symbol": "SI=F",
+      "unit": "$",
+      "decimals": 3,
+      "available": true,
+      "error": "",
+      "value": 59.45500183105469,
+      "previous": 58.348,
+      "change": 1.1070018310546885,
+      "pct": 1.8972404042206907,
+      "support": 57.8650016784668,
+      "resistance": 59.95000076293945
+    },
+    "eurusd": {
+      "label": "EURUSD",
+      "symbol": "EURUSD=X",
+      "unit": "",
+      "decimals": 4,
+      "available": true,
+      "error": "",
+      "value": 1.1406410932540894,
+      "previous": 1.1354,
+      "change": 0.005241093254089391,
+      "pct": 0.4616076496467668,
+      "support": 1.1377859115600586,
+      "resistance": 1.143379807472229
+    },
+    "dxy": {
+      "label": "DXY",
+      "symbol": "DX-Y.NYB",
+      "unit": "",
+      "decimals": 2,
+      "available": true,
+      "error": "",
+      "value": 101.26100158691406,
+      "previous": 101.43,
+      "change": -0.16899841308594432,
+      "pct": -0.166615807045198,
+      "support": 101.04499816894531,
+      "resistance": 101.41300201416016
+    },
+    "wti": {
+      "label": "WTI",
+      "symbol": "CL=F",
+      "unit": "$",
+      "decimals": 2,
+      "available": true,
+      "error": "",
+      "value": 68.66999816894531,
+      "previous": 71.92,
+      "change": -3.250001831054689,
+      "pct": -4.518912445849123,
+      "support": 68.58000183105469,
+      "resistance": 70.58000183105469
+    },
+    "brent": {
+      "label": "Brent",
+      "symbol": "BZ=F",
+      "unit": "$",
+      "decimals": 2,
+      "available": true,
+      "error": "",
+      "value": 72.08999633789062,
+      "previous": 75.26,
+      "change": -3.17000366210938,
+      "pct": -4.212069707825378,
+      "support": 71.98999786376953,
+      "resistance": 73.98999786376953
+    },
+    "copper": {
+      "label": "Copper",
+      "symbol": "HG=F",
+      "unit": "$",
+      "decimals": 3,
+      "available": true,
+      "error": "",
+      "value": 6.19350004196167,
+      "previous": 6.0705,
+      "change": 0.12300004196166991,
+      "pct": 2.0261929324054018,
+      "support": 6.076499938964844,
+      "resistance": 6.243000030517578
+    },
+    "spx": {
+      "label": "S&P 500",
+      "symbol": "^GSPC",
+      "unit": "",
+      "decimals": 1,
+      "available": true,
+      "error": "",
+      "value": 7357.47021484375,
+      "previous": 7358.22,
+      "change": -0.7497851562502547,
+      "pct": -0.010189762690572647,
+      "support": 7294.18017578125,
+      "resistance": 7406.169921875
+    },
+    "vix": {
+      "label": "VIX",
+      "symbol": "^VIX",
+      "unit": "",
+      "decimals": 2,
+      "available": true,
+      "error": "",
+      "value": 19.149999618530273,
+      "previous": 18.89,
+      "change": 0.25999961853027287,
+      "pct": 1.376387604712932,
+      "support": 18.899999618530273,
+      "resistance": 20.719999313354492
+    }
+  },
+  "rates": {
+    "us2y": {
+      "label": "US 2Y yield",
+      "series": "DGS2",
+      "unit": "%",
+      "decimals": 2,
+      "available": false,
+      "source_url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS2",
+      "error": "RuntimeError: TimeoutError: The read operation timed out"
+    },
+    "us10y": {
+      "label": "US 10Y yield",
+      "series": "DGS10",
+      "unit": "%",
+      "decimals": 2,
+      "available": false,
+      "source_url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS10",
+      "error": "RuntimeError: TimeoutError: The read operation timed out"
+    },
+    "real10y": {
+      "label": "US 10Y real yield",
+      "series": "DFII10",
+      "unit": "%",
+      "decimals": 2,
+      "available": false,
+      "source_url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DFII10",
+      "error": "RuntimeError: TimeoutError: The read operation timed out"
+    }
+  },
+  "ratio": {
+    "label": "Gold/silver ratio",
+    "available": true,
+    "value": 68.84029562346991,
+    "change": -0.23662218005377156,
+    "decimals": 2,
+    "unit": ""
+  },
+  "driver_scores": {
+    "xauusd": 1.5,
+    "xagusd": 3.0,
+    "eurusd": 1.8
+  },
+  "asset_cards": {
+    "xauusd": {
+      "label": "XAUUSD",
+      "bias": "Bullish",
+      "score": 1.5,
+      "main_driver": "DXY and real-yield pressure",
+      "invalidation": "DXY and real yields rise together."
+    },
+    "xagusd": {
+      "label": "XAGUSD",
+      "bias": "Strong bullish",
+      "score": 3.0,
+      "main_driver": "Metals macro plus copper/ratio confirmation",
+      "invalidation": "Copper rolls over and the gold/silver ratio rises."
+    },
+    "eurusd": {
+      "label": "EURUSD",
+      "bias": "Bullish",
+      "score": 1.8,
+      "main_driver": "DXY and US front-end yield pressure",
+      "invalidation": "DXY rebounds while US 2Y rises faster."
+    }
+  },
+  "news": [
+    {
+      "source": "BBC Business",
+      "title": "What's happening to petrol prices now oil is back to pre-Iran war levels?",
+      "desc": "When the conflict began on 28 February, fuel costs jumped as the war disrupted the production and transportation of energy across the Middle East.",
+      "assets": [
+        "XAUUSD",
+        "WTI"
+      ],
+      "score": 5,
+      "why": "affects USD/rates, safe-haven demand, or inflation risk premium"
+    },
+    {
+      "source": "Al Jazeera",
+      "title": "Why has the UN paused plans to evacuate sailors from the Strait of Hormuz?",
+      "desc": "A cargo vessel had been struck by a projectile near Oman, as Iran says all ships must pass with its permission.",
+      "assets": [
+        "XAUUSD",
+        "WTI"
+      ],
+      "score": 5,
+      "why": "affects USD/rates, safe-haven demand, or inflation risk premium"
+    },
+    {
+      "source": "Al Jazeera",
+      "title": "Iran slams the GCC and the US for 'interventionist' statement: What we know",
+      "desc": "Tehran rejects US-GCC pressure over missiles, the Strait of Hormuz and regional armed groups.",
+      "assets": [
+        "XAUUSD",
+        "WTI"
+      ],
+      "score": 5,
+      "why": "affects USD/rates, safe-haven demand, or inflation risk premium"
+    },
+    {
+      "source": "BBC World",
+      "title": "UN pauses Strait of Hormuz evacuation plan after cargo ship attacked",
+      "desc": "The ship was reportedly struck by an \"unknown projectile\" near Oman but no casualties were reported.",
+      "assets": [
+        "XAUUSD",
+        "WTI"
+      ],
+      "score": 4,
+      "why": "affects USD/rates, safe-haven demand, or inflation risk premium"
+    },
+    {
+      "source": "BBC World",
+      "title": "US sanctions Rwanda gold refinery accused of smuggling DR Congo's minerals",
+      "desc": "The US alleges Gasabo Gold Refinery smuggled at least 60kg of gold in early 2026.",
+      "assets": [
+        "XAUUSD",
+        "XAGUSD"
+      ],
+      "score": 4,
+      "why": "affects USD/rates, safe-haven demand, or inflation risk premium"
+    }
+  ],
+  "calendar": {
+    "released": [
+      {
+        "time": "2026-06-26 17:00",
+        "currency": "USD",
+        "title": "Revised UoM Consumer Sentiment",
+        "impact": "Medium"
+      },
+      {
+        "time": "2026-06-26 17:00",
+        "currency": "USD",
+        "title": "Revised UoM Inflation Expectations",
+        "impact": "Medium"
+      }
+    ],
+    "next6": [
+      {
+        "time": "2026-06-26 18:30",
+        "currency": "USD",
+        "title": "FOMC Member Kashkari Speaks",
+        "impact": "Low"
+      },
+      {
+        "time": "2026-06-26 20:30",
+        "currency": "USD",
+        "title": "President Trump Speaks",
+        "impact": "Medium"
+      }
+    ],
+    "next24": [],
+    "next72": []
+  },
+  "quality": [
+    "Real-yield feed unavailable: RuntimeError: TimeoutError: The read operation timed out.",
+    "XAUUSD and XAGUSD use Yahoo futures proxies GC=F and SI=F because free spot endpoints are not reliable in the free feed.",
+    "News clustering returned 5 market-impact items.",
+    "Calendar parser returned 4 timezone-aware relevant events displayed in Asia/Beirut."
+  ]
+}
