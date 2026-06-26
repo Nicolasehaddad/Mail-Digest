@@ -3,12 +3,17 @@ name: Market Intelligence Digest
 on:
   workflow_dispatch:
   schedule:
-    # GitHub cron is UTC. These are the Beirut targets plus a one-hour
-    # fallback for summer/winter time and occasional scheduler delays.
-    - cron: '0 5,6,10,11,20,21 * * *'
+    # Run in Beirut time directly. Repeated near-slot wakeups help if GitHub
+    # queues a run for a few minutes, while the script prevents duplicates.
+    - cron: '3,13,23,33,43,53 8,13,23 * * *'
+      timezone: 'Asia/Beirut'
 
 permissions:
   contents: write
+
+concurrency:
+  group: market-intel-digest
+  cancel-in-progress: false
 
 jobs:
   send-digest:
@@ -38,6 +43,7 @@ jobs:
 
           TZ = ZoneInfo('Asia/Beirut')
           NOW = datetime.now(TZ)
+          SEND_WINDOW_MINUTES = 55
           STATE_DIR = Path('.digest-state')
           STATE_DIR.mkdir(exist_ok=True)
           SENT_PATH = STATE_DIR / 'send-slots.json'
@@ -63,14 +69,13 @@ jobs:
               except Exception:
                   sent = set()
               candidates = []
-              for day_offset in (0, 1):
-                  day = (NOW - timedelta(days=day_offset)).date()
-                  for hour in (8, 13, 23):
-                      target = datetime(day.year, day.month, day.day, hour, 0, tzinfo=TZ)
-                      if timedelta(0) <= NOW - target <= timedelta(minutes=240):
-                          candidates.append(target)
+              day = NOW.date()
+              for hour in (8, 13, 23):
+                  target = datetime(day.year, day.month, day.day, hour, 0, tzinfo=TZ)
+                  if timedelta(0) <= NOW - target <= timedelta(minutes=SEND_WINDOW_MINUTES):
+                      candidates.append(target)
               if not candidates:
-                  print(f'Skip: {NOW:%Y-%m-%d %H:%M} Asia/Beirut is outside the 08:00, 13:00, 23:00 windows.')
+                  print(f'Skip: {NOW:%Y-%m-%d %H:%M} Asia/Beirut is outside the first {SEND_WINDOW_MINUTES} minutes of the 08:00, 13:00, 23:00 slots.')
                   return ''
               target = max(candidates)
               slot = target.strftime('%Y-%m-%d-%H')
@@ -78,6 +83,10 @@ jobs:
                   print(f'Skip: slot {slot} already sent.')
                   return ''
               return slot
+
+          slot = slot_to_send()
+          if not slot:
+              raise SystemExit(0)
 
           def yahoo(symbol):
               url = 'https://query1.finance.yahoo.com/v8/finance/chart/' + urllib.parse.quote(symbol) + '?range=2d&interval=5m'
@@ -235,9 +244,6 @@ jobs:
           <div style="background:#fff;border:1px solid #dadce0;border-radius:8px;padding:14px"><b>Calendar risk</b><ul>{cal_html}</ul></div>
           </div></body></html>'''
 
-          slot = slot_to_send()
-          if not slot:
-              raise SystemExit(0)
           msg = EmailMessage()
           msg['Subject'] = f'Market Intelligence Digest - {NOW:%Y-%m-%d %H:%M} Asia/Beirut'
           msg['From'] = os.environ['SMTP_FROM']
