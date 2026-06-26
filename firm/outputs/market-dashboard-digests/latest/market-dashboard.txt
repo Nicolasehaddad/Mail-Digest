@@ -1,16 +1,16 @@
 Market Dashboard Digest
-2026-06-26 18:19 Asia/Beirut
+2026-06-26 18:33 Asia/Beirut
 
 Analyst Brief
-Metals have a bullish tone, while EURUSD is bullish. Since the previous digest, DXY: 101.26 (-0.17) | baseline; 10Y real yield: unavailable; WTI: $68.67 (-3.25) | baseline; Copper: $6.194 (+0.12) | baseline. Gold is mainly driven by dxy and real-yield pressure; the current read is bullish with a score of +1.5. Confidence is reduced because the real-yield feed is unavailable. Silver is judged through the metals backdrop plus copper and the gold/silver ratio, which currently gives a strong bullish read. EURUSD is driven by DXY and US front-end yields, with a bullish read. The next major catalyst is USD FOMC Member Kashkari Speaks. The interpretation is wrong if dxy and real yields rise together. For EURUSD, invalidate if dxy rebounds while us 2y rises faster. Treat this as a concise market map, not a trade signal.
+Metals have a strong bullish tone, while EURUSD is bullish. Since the previous digest, DXY: 101.23 (-0.20) | -0.03 since last digest; 10Y real yield: %2.17 (-0.01%) | baseline; WTI: $68.62 (-3.30) | -0.05 since last digest; Copper: $6.196 (+0.13) | +0.003 since last digest. Gold is mainly driven by dxy and real-yield pressure; the current read is strong bullish with a score of +3.0. Real-yield confirmation is available from Trading Economics fallback. Silver is judged through the metals backdrop plus copper and the gold/silver ratio, which currently gives a strong bullish read. EURUSD is driven by DXY and US front-end yields, with a bullish read. The next major catalyst is USD President Trump Speaks. The interpretation is wrong if dxy and real yields rise together. For EURUSD, invalidate if dxy rebounds while us 2y rises faster. Treat this as a concise market map, not a trade signal.
 
 Key Asset Read
-- XAUUSD: Bullish | DXY and real-yield pressure | Invalidation: DXY and real yields rise together.
+- XAUUSD: Strong bullish | DXY and real-yield pressure | Invalidation: DXY and real yields rise together.
 - XAGUSD: Strong bullish | Metals macro plus copper/ratio confirmation | Invalidation: Copper rolls over and the gold/silver ratio rises.
 - EURUSD: Bullish | DXY and US front-end yield pressure | Invalidation: DXY rebounds while US 2Y rises faster.
 
 Data Quality
-- Real-yield feed unavailable: RuntimeError: TimeoutError: The read operation timed out.
+- 10Y real yield available from Trading Economics fallback: 2.17% on 2026-06-26.
 - XAUUSD and XAGUSD use Yahoo futures proxies GC=F and SI=F because free spot endpoints are not reliable in the free feed.
 - News clustering returned 5 market-impact items.
 - Calendar parser returned 4 timezone-aware relevant events displayed in Asia/Beirut.

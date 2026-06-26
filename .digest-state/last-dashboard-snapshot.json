@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-26T18:19:14.706561+03:00",
+  "generated_at": "2026-06-26T18:33:55.036777+03:00",
   "markets": {
     "xauusd": {
       "label": "XAUUSD",
@@ -8,10 +8,10 @@
       "decimals": 1,
       "available": true,
       "error": "",
-      "value": 4092.89990234375,
+      "value": 4096.2001953125,
       "previous": 4030.5,
-      "change": 62.39990234375,
-      "pct": 1.548192590094281,
+      "change": 65.7001953125,
+      "pct": 1.6300755566927179,
       "support": 4041.199951171875,
       "resistance": 4108.7001953125
     },
@@ -22,11 +22,11 @@
       "decimals": 3,
       "available": true,
       "error": "",
-      "value": 59.45500183105469,
+      "value": 59.52000045776367,
       "previous": 58.348,
-      "change": 1.1070018310546885,
-      "pct": 1.8972404042206907,
-      "support": 57.8650016784668,
+      "change": 1.172000457763673,
+      "pct": 2.0086386127436637,
+      "support": 57.96500015258789,
       "resistance": 59.95000076293945
     },
     "eurusd": {
@@ -36,11 +36,11 @@
       "decimals": 4,
       "available": true,
       "error": "",
-      "value": 1.1406410932540894,
+      "value": 1.1405109167099,
       "previous": 1.1354,
-      "change": 0.005241093254089391,
-      "pct": 0.4616076496467668,
-      "support": 1.1377859115600586,
+      "change": 0.0051109167098999375,
+      "pct": 0.4501423912189482,
+      "support": 1.1386927366256714,
       "resistance": 1.143379807472229
     },
     "dxy": {
@@ -50,12 +50,12 @@
       "decimals": 2,
       "available": true,
       "error": "",
-      "value": 101.26100158691406,
+      "value": 101.22799682617188,
       "previous": 101.43,
-      "change": -0.16899841308594432,
-      "pct": -0.166615807045198,
+      "change": -0.20200317382813182,
+      "pct": -0.1991552537002187,
       "support": 101.04499816894531,
-      "resistance": 101.41300201416016
+      "resistance": 101.41200256347656
     },
     "wti": {
       "label": "WTI",
@@ -64,26 +64,12 @@
       "decimals": 2,
       "available": true,
       "error": "",
-      "value": 68.66999816894531,
+      "value": 68.62000274658203,
       "previous": 71.92,
-      "change": -3.250001831054689,
-      "pct": -4.518912445849123,
-      "support": 68.58000183105469,
+      "change": -3.2999972534179705,
+      "pct": -4.588427771715755,
+      "support": 68.56999969482422,
       "resistance": 70.58000183105469
-    },
-    "brent": {
-      "label": "Brent",
-      "symbol": "BZ=F",
-      "unit": "$",
-      "decimals": 2,
-      "available": true,
-      "error": "",
-      "value": 72.08999633789062,
-      "previous": 75.26,
-      "change": -3.17000366210938,
-      "pct": -4.212069707825378,
-      "support": 71.98999786376953,
-      "resistance": 73.98999786376953
     },
     "copper": {
       "label": "Copper",
@@ -92,11 +78,11 @@
       "decimals": 3,
       "available": true,
       "error": "",
-      "value": 6.19350004196167,
+      "value": 6.196499824523926,
       "previous": 6.0705,
-      "change": 0.12300004196166991,
-      "pct": 2.0261929324054018,
-      "support": 6.076499938964844,
+      "change": 0.12599982452392577,
+      "pct": 2.0756086734853105,
+      "support": 6.085000038146973,
       "resistance": 6.243000030517578
     },
     "spx": {
@@ -106,10 +92,10 @@
       "decimals": 1,
       "available": true,
       "error": "",
-      "value": 7357.47021484375,
+      "value": 7374.2099609375,
       "previous": 7358.22,
-      "change": -0.7497851562502547,
-      "pct": -0.010189762690572647,
+      "change": 15.989960937499745,
+      "pct": 0.21730745937875934,
       "support": 7294.18017578125,
       "resistance": 7406.169921875
     },
@@ -120,11 +106,11 @@
       "decimals": 2,
       "available": true,
       "error": "",
-      "value": 19.149999618530273,
+      "value": 19.270000457763672,
       "previous": 18.89,
-      "change": 0.25999961853027287,
-      "pct": 1.376387604712932,
-      "support": 18.899999618530273,
+      "change": 0.3800004577636713,
+      "pct": 2.0116487970549035,
+      "support": 19.0,
       "resistance": 20.719999313354492
     }
   },
@@ -135,8 +121,7 @@
       "unit": "%",
       "decimals": 2,
       "available": false,
-      "source_url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS2",
-      "error": "RuntimeError: TimeoutError: The read operation timed out"
+      "error": "fred_api: RuntimeError: FRED_API_KEY not set | fred_csv: RuntimeError: TimeoutError: The read operation timed out"
     },
     "us10y": {
       "label": "US 10Y yield",
@@ -144,30 +129,36 @@
       "unit": "%",
       "decimals": 2,
       "available": false,
-      "source_url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS10",
-      "error": "RuntimeError: TimeoutError: The read operation timed out"
+      "error": "fred_api: RuntimeError: FRED_API_KEY not set | fred_csv: RuntimeError: TimeoutError: The read operation timed out"
     },
     "real10y": {
       "label": "US 10Y real yield",
       "series": "DFII10",
       "unit": "%",
       "decimals": 2,
-      "available": false,
-      "source_url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DFII10",
-      "error": "RuntimeError: TimeoutError: The read operation timed out"
+      "available": true,
+      "date": "2026-06-26",
+      "previous_date": "previous session",
+      "value": 2.17,
+      "previous": 2.1799999999999997,
+      "change": -0.01,
+      "pct": 0.0,
+      "source_name": "Trading Economics fallback",
+      "source_url": "https://tradingeconomics.com/united-states/10-year-tips-yield"
     }
   },
   "ratio": {
     "label": "Gold/silver ratio",
     "available": true,
-    "value": 68.84029562346991,
-    "change": -0.23662218005377156,
-    "decimals": 2,
-    "unit": ""
+    "value": 68.82056726829543,
+    "previous": 69.07691780352368,
+    "change": -0.25635053522825046,
+    "unit": "",
+    "decimals": 2
   },
   "driver_scores": {
-    "xauusd": 1.5,
-    "xagusd": 3.0,
+    "xauusd": 3.0,
+    "xagusd": 4.3,
     "eurusd": 1.8
   }
 }
