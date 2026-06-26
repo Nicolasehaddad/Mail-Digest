@@ -22,6 +22,7 @@ concurrency:
 jobs:
   send-digest:
     runs-on: ubuntu-latest
+    timeout-minutes: 12
 
     steps:
       - name: Check out repository
@@ -33,6 +34,7 @@ jobs:
           python-version: "3.12"
 
       - name: Build and send dashboard digest
+        timeout-minutes: 9
         env:
           EMAIL_TO: "nicolasehaddad@gmail.com,eliashaddad222@gmail.com"
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
@@ -40,6 +42,7 @@ jobs:
           SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           SMTP_FROM: "nicolasehaddad@gmail.com"
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           GITHUB_EVENT_PATH: ${{ github.event_path }}
         run: |
@@ -53,13 +56,13 @@ jobs:
 
           TZ = ZoneInfo("Asia/Beirut")
           NOW = datetime.now(TZ)
-          UA = "Mozilla/5.0 NicolasMarketDashboard/1.0"
+          UA = "Mozilla/5.0 NicolasMarketDashboard/1.1"
           STATE_DIR = Path(".digest-state")
           SEND_STATE = STATE_DIR / "dashboard-send-slots.json"
           SNAPSHOT_STATE = STATE_DIR / "last-dashboard-snapshot.json"
           OUT = Path("firm/outputs/market-dashboard-digests/latest")
-          SEND_WINDOW_MINUTES = 55
           SLOTS = (8, 13, 23)
+          SEND_WINDOW_MINUTES = 55
 
           def clean(value, limit=220):
               value = html.unescape(re.sub(r"<[^>]+>", " ", value or ""))
@@ -67,17 +70,17 @@ jobs:
               value = re.sub(r"\s+", " ", value).strip()
               return value if len(value) <= limit else value[:limit - 3].rstrip() + "..."
 
-          def request_text(url, timeout=25, attempts=3):
+          def request_text(url, timeout=12, attempts=2, accept="text/html,application/json,text/csv,application/xml,*/*"):
               last = ""
               for attempt in range(attempts):
                   try:
-                      req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "text/csv,application/json,application/rss+xml,application/xml,*/*", "Cache-Control": "no-cache"})
+                      req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": accept, "Cache-Control": "no-cache"})
                       with urllib.request.urlopen(req, timeout=timeout) as response:
                           return response.read().decode("utf-8", errors="replace")
                   except Exception as exc:
                       last = f"{type(exc).__name__}: {exc}"
                       if attempt < attempts - 1:
-                          time.sleep(1.2 * (attempt + 1))
+                          time.sleep(0.8 * (attempt + 1))
               raise RuntimeError(last)
 
           def read_json(path):
@@ -122,9 +125,9 @@ jobs:
                   return "", f"slot {slot} already sent"
               return slot, f"scheduled Beirut slot {target:%H:%M}"
 
-          slot, send_reason = select_slot()
+          slot, reason = select_slot()
           print(f"Beirut time: {NOW:%Y-%m-%d %H:%M}")
-          print(f"Send decision: {send_reason}")
+          print(f"Send decision: {reason}")
           if not slot:
               raise SystemExit(0)
 
@@ -132,10 +135,10 @@ jobs:
               return 0.0 if not previous else (value - previous) / previous * 100
 
           def yahoo(symbol, label, unit="", decimals=2):
-              url = "https://query1.finance.yahoo.com/v8/finance/chart/" + urllib.parse.quote(symbol) + "?range=2d&interval=5m"
               row = {"label": label, "symbol": symbol, "unit": unit, "decimals": decimals, "available": False, "error": ""}
+              url = "https://query1.finance.yahoo.com/v8/finance/chart/" + urllib.parse.quote(symbol) + "?range=2d&interval=5m"
               try:
-                  result = json.loads(request_text(url))["chart"]["result"][0]
+                  result = json.loads(request_text(url, timeout=10, attempts=2, accept="application/json,*/*"))["chart"]["result"][0]
                   q = result["indicators"]["quote"][0]
                   closes = [x for x in q.get("close", []) if isinstance(x, (int, float))]
                   highs = [x for x in q.get("high", []) if isinstance(x, (int, float))]
@@ -144,29 +147,72 @@ jobs:
                       raise RuntimeError("no closes returned")
                   value = closes[-1]
                   previous = result.get("meta", {}).get("chartPreviousClose") or next((x for x in reversed(closes[:-1]) if x), value)
-                  recent_high = max(highs[-96:] or [value])
-                  recent_low = min(lows[-96:] or [value])
-                  row.update({"available": True, "value": value, "previous": previous, "change": value - previous, "pct": pct(value, previous), "support": recent_low, "resistance": recent_high})
+                  row.update({"available": True, "value": value, "previous": previous, "change": value - previous, "pct": pct(value, previous), "support": min(lows[-96:] or [value]), "resistance": max(highs[-96:] or [value])})
               except Exception as exc:
                   row["error"] = f"{type(exc).__name__}: {exc}"
               return row
 
-          def fred(series, label, unit="%"):
+          def fred_csv(series, label):
               url = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=" + urllib.parse.quote(series)
-              row = {"label": label, "series": series, "unit": unit, "decimals": 2, "available": False, "source_url": url, "error": ""}
-              try:
-                  points = []
-                  for item in csv.DictReader(StringIO(request_text(url, timeout=30, attempts=3))):
-                      value = (item.get(series) or "").strip()
-                      if value and value != ".":
-                          points.append((item.get("observation_date", ""), float(value)))
-                  if not points:
-                      raise RuntimeError("no valid observations returned")
-                  date, value = points[-1]
-                  previous_date, previous = points[-2] if len(points) > 1 else points[-1]
-                  row.update({"available": True, "date": date, "previous_date": previous_date, "value": value, "previous": previous, "change": value - previous, "pct": 0.0})
-              except Exception as exc:
-                  row["error"] = f"{type(exc).__name__}: {exc}"
+              text = request_text(url, timeout=8, attempts=1, accept="text/csv,*/*")
+              points = []
+              for item in csv.DictReader(StringIO(text)):
+                  value = (item.get(series) or "").strip()
+                  if value and value != ".":
+                      points.append((item.get("observation_date", ""), float(value)))
+              if not points:
+                  raise RuntimeError("no valid observations returned")
+              date, value = points[-1]
+              previous_date, previous = points[-2] if len(points) > 1 else points[-1]
+              return {"label": label, "series": series, "unit": "%", "decimals": 2, "available": True, "date": date, "previous_date": previous_date, "value": value, "previous": previous, "change": value - previous, "pct": 0.0, "source_name": "FRED DFII10" if series == "DFII10" else "FRED"}
+
+          def fred_api(series, label):
+              key = os.environ.get("FRED_API_KEY", "").strip()
+              if not key:
+                  raise RuntimeError("FRED_API_KEY not set")
+              start = (NOW.date() - timedelta(days=60)).isoformat()
+              params = urllib.parse.urlencode({"series_id": series, "api_key": key, "file_type": "json", "observation_start": start})
+              url = "https://api.stlouisfed.org/fred/series/observations?" + params
+              parsed = json.loads(request_text(url, timeout=10, attempts=2, accept="application/json,*/*"))
+              points = [(o.get("date", ""), float(o["value"])) for o in parsed.get("observations", []) if o.get("value") not in (None, ".", "")]
+              if not points:
+                  raise RuntimeError("no valid API observations returned")
+              date, value = points[-1]
+              previous_date, previous = points[-2] if len(points) > 1 else points[-1]
+              return {"label": label, "series": series, "unit": "%", "decimals": 2, "available": True, "date": date, "previous_date": previous_date, "value": value, "previous": previous, "change": value - previous, "pct": 0.0, "source_name": "FRED API"}
+
+          def trading_economics_real_yield(label):
+              url = "https://tradingeconomics.com/united-states/10-year-tips-yield"
+              text = request_text(url, timeout=10, attempts=2)
+              pattern = r"TIPS Yield .*? to\s+([0-9]+(?:\.[0-9]+)?)%\s+on\s+([A-Za-z]+\s+\d{1,2},\s+\d{4}),\s+marking\s+a\s+([0-9]+(?:\.[0-9]+)?)\s+percentage points\s+(increase|decrease)"
+              match = re.search(pattern, text, re.I | re.S)
+              if not match:
+                  match = re.search(r"10 Year TIPS Yield[^0-9]*([0-9]+(?:\.[0-9]+)?)", text, re.I | re.S)
+                  if not match:
+                      raise RuntimeError("Trading Economics real-yield value not found")
+                  value = float(match.group(1)); date = NOW.date().isoformat(); change = 0.0; previous = value
+              else:
+                  value = float(match.group(1))
+                  date = datetime.strptime(match.group(2), "%B %d, %Y").date().isoformat()
+                  raw_change = float(match.group(3))
+                  change = raw_change if match.group(4).lower() == "increase" else -raw_change
+                  previous = value - change
+              return {"label": label, "series": "DFII10", "unit": "%", "decimals": 2, "available": True, "date": date, "previous_date": "previous session", "value": value, "previous": previous, "change": change, "pct": 0.0, "source_name": "Trading Economics fallback", "source_url": url}
+
+          def rate(series, label):
+              row = {"label": label, "series": series, "unit": "%", "decimals": 2, "available": False, "error": ""}
+              errors = []
+              for getter in (fred_api, fred_csv):
+                  try:
+                      return getter(series, label)
+                  except Exception as exc:
+                      errors.append(f"{getter.__name__}: {type(exc).__name__}: {exc}")
+              if series == "DFII10":
+                  try:
+                      return trading_economics_real_yield(label)
+                  except Exception as exc:
+                      errors.append(f"trading_economics: {type(exc).__name__}: {exc}")
+              row["error"] = " | ".join(errors)
               return row
 
           markets = {
@@ -175,20 +221,18 @@ jobs:
               "eurusd": yahoo("EURUSD=X", "EURUSD", "", 4),
               "dxy": yahoo("DX-Y.NYB", "DXY", "", 2),
               "wti": yahoo("CL=F", "WTI", "$", 2),
-              "brent": yahoo("BZ=F", "Brent", "$", 2),
               "copper": yahoo("HG=F", "Copper", "$", 3),
               "spx": yahoo("^GSPC", "S&P 500", "", 1),
               "vix": yahoo("^VIX", "VIX", "", 2),
           }
-          rates = {
-              "us2y": fred("DGS2", "US 2Y yield"),
-              "us10y": fred("DGS10", "US 10Y yield"),
-              "real10y": fred("DFII10", "US 10Y real yield"),
-          }
+          rates = {"us2y": rate("DGS2", "US 2Y yield"), "us10y": rate("DGS10", "US 10Y yield"), "real10y": rate("DFII10", "US 10Y real yield")}
+
           if markets["xauusd"].get("available") and markets["xagusd"].get("available") and markets["xagusd"].get("value"):
-              ratio = {"label": "Gold/silver ratio", "available": True, "value": markets["xauusd"]["value"] / markets["xagusd"]["value"], "change": (markets["xauusd"]["value"] / markets["xagusd"]["value"]) - (markets["xauusd"]["previous"] / markets["xagusd"]["previous"]), "decimals": 2, "unit": ""}
+              value = markets["xauusd"]["value"] / markets["xagusd"]["value"]
+              previous = markets["xauusd"]["previous"] / markets["xagusd"]["previous"]
+              ratio = {"label": "Gold/silver ratio", "available": True, "value": value, "previous": previous, "change": value - previous, "unit": "", "decimals": 2}
           else:
-              ratio = {"label": "Gold/silver ratio", "available": False, "error": "XAU/XAG proxy unavailable", "decimals": 2, "unit": ""}
+              ratio = {"label": "Gold/silver ratio", "available": False, "error": "XAU/XAG proxy unavailable", "unit": "", "decimals": 2}
 
           def bias(score):
               if score >= 2.5: return "Strong bullish"
@@ -197,45 +241,42 @@ jobs:
               if score <= -0.75: return "Bearish"
               return "Neutral / wait"
 
-          def driver_rows():
-              rows = []
-              totals = {"xauusd": 0.0, "xagusd": 0.0, "eurusd": 0.0}
-              def add(name, xau, xag, eur, read):
-                  rows.append({"driver": name, "xauusd": xau, "xagusd": xag, "eurusd": eur, "read": read})
-                  totals["xauusd"] += xau[1]; totals["xagusd"] += xag[1]; totals["eurusd"] += eur[1]
-              dxy = markets["dxy"]
-              if dxy.get("available"):
-                  down = dxy["pct"] < 0
-                  add("DXY", ("Bullish" if down else "Bearish", 1.5 if down else -1.5), ("Bullish" if down else "Bearish", 1.2 if down else -1.2), ("Bullish" if down else "Bearish", 1.5 if down else -1.5), f"DXY {dxy['pct']:+.2f}%")
-              real = rates["real10y"]
-              if real.get("available"):
-                  down = real["change"] < 0
-                  add("US real yields", ("Bullish" if down else "Bearish", 1.5 if down else -1.5), ("Bullish" if down else "Bearish", 1.3 if down else -1.3), ("Neutral", 0), f"10Y TIPS {real['change']:+.2f} pts, latest {real['value']:.2f}%")
-              else:
-                  add("US real yields", ("Unknown", 0), ("Unknown", 0), ("Neutral", 0), "Real-yield feed unavailable")
-              us2y = rates["us2y"]
-              if us2y.get("available"):
-                  down = us2y["change"] < 0
-                  add("US 2Y yield", ("Mild bullish" if down else "Mild bearish", 0.5 if down else -0.5), ("Mild bullish" if down else "Mild bearish", 0.5 if down else -0.5), ("Bullish" if down else "Bearish", 1.0 if down else -1.0), f"US 2Y {us2y['change']:+.2f} pts")
-              us10 = rates["us10y"]
-              if us10.get("available"):
-                  down = us10["change"] < 0
-                  add("US 10Y yield", ("Bullish" if down else "Bearish", 0.8 if down else -0.8), ("Bullish" if down else "Bearish", 0.8 if down else -0.8), ("Mild bullish" if down else "Mild bearish", 0.4 if down else -0.4), f"US 10Y {us10['change']:+.2f} pts")
-              wti = markets["wti"]
-              if wti.get("available"):
-                  up = wti["pct"] > 0
-                  add("Oil/inflation", ("Mild bullish" if up else "Neutral", 0.5 if up else 0), ("Mild bullish" if up else "Neutral", 0.4 if up else 0), ("Bearish" if up else "Mild bullish", -0.5 if up else 0.3), f"WTI {wti['pct']:+.2f}%")
-              copper = markets["copper"]
-              if copper.get("available"):
-                  up = copper["pct"] > 0
-                  add("Copper/silver", ("Neutral", 0), ("Bullish" if up else "Bearish", 1.0 if up else -1.0), ("Neutral", 0), f"Copper {copper['pct']:+.2f}%")
-              if ratio.get("available"):
-                  falling = ratio["change"] < 0
-                  add("Gold/silver ratio", ("Neutral", 0), ("Bullish" if falling else "Bearish", 0.8 if falling else -0.8), ("Neutral", 0), f"Ratio {ratio['change']:+.2f}")
-              return rows, totals
+          rows, totals = [], {"xauusd": 0.0, "xagusd": 0.0, "eurusd": 0.0}
+          def add(driver, xau, xag, eur, read):
+              rows.append({"driver": driver, "xauusd": xau, "xagusd": xag, "eurusd": eur, "read": read})
+              totals["xauusd"] += xau[1]; totals["xagusd"] += xag[1]; totals["eurusd"] += eur[1]
 
-          rows, totals = driver_rows()
-          asset_cards = {
+          dxy = markets["dxy"]
+          if dxy.get("available"):
+              down = dxy["pct"] < 0
+              add("DXY", ("Bullish" if down else "Bearish", 1.5 if down else -1.5), ("Bullish" if down else "Bearish", 1.2 if down else -1.2), ("Bullish" if down else "Bearish", 1.5 if down else -1.5), f"DXY {dxy['pct']:+.2f}%")
+          real = rates["real10y"]
+          if real.get("available"):
+              down = real["change"] < 0
+              add("US real yields", ("Bullish" if down else "Bearish", 1.5 if down else -1.5), ("Bullish" if down else "Bearish", 1.3 if down else -1.3), ("Neutral", 0), f"10Y TIPS {real['change']:+.2f} pts, latest {real['value']:.2f}% ({real.get('source_name','source')})")
+          else:
+              add("US real yields", ("Unknown", 0), ("Unknown", 0), ("Neutral", 0), "Real-yield feed unavailable")
+          us2y = rates["us2y"]
+          if us2y.get("available"):
+              down = us2y["change"] < 0
+              add("US 2Y yield", ("Mild bullish" if down else "Mild bearish", 0.5 if down else -0.5), ("Mild bullish" if down else "Mild bearish", 0.5 if down else -0.5), ("Bullish" if down else "Bearish", 1.0 if down else -1.0), f"US 2Y {us2y['change']:+.2f} pts")
+          us10 = rates["us10y"]
+          if us10.get("available"):
+              down = us10["change"] < 0
+              add("US 10Y yield", ("Bullish" if down else "Bearish", 0.8 if down else -0.8), ("Bullish" if down else "Bearish", 0.8 if down else -0.8), ("Mild bullish" if down else "Mild bearish", 0.4 if down else -0.4), f"US 10Y {us10['change']:+.2f} pts")
+          wti = markets["wti"]
+          if wti.get("available"):
+              up = wti["pct"] > 0
+              add("Oil/inflation", ("Mild bullish" if up else "Neutral", 0.5 if up else 0), ("Mild bullish" if up else "Neutral", 0.4 if up else 0), ("Bearish" if up else "Mild bullish", -0.5 if up else 0.3), f"WTI {wti['pct']:+.2f}%")
+          copper = markets["copper"]
+          if copper.get("available"):
+              up = copper["pct"] > 0
+              add("Copper/silver", ("Neutral", 0), ("Bullish" if up else "Bearish", 1.0 if up else -1.0), ("Neutral", 0), f"Copper {copper['pct']:+.2f}%")
+          if ratio.get("available"):
+              falling = ratio["change"] < 0
+              add("Gold/silver ratio", ("Neutral", 0), ("Bullish" if falling else "Bearish", 0.8 if falling else -0.8), ("Neutral", 0), f"Ratio {ratio['change']:+.2f}")
+
+          cards = {
               "xauusd": {"label": "XAUUSD", "bias": bias(totals["xauusd"]), "score": totals["xauusd"], "main_driver": "DXY and real-yield pressure", "invalidation": "DXY and real yields rise together."},
               "xagusd": {"label": "XAGUSD", "bias": bias(totals["xagusd"]), "score": totals["xagusd"], "main_driver": "Metals macro plus copper/ratio confirmation", "invalidation": "Copper rolls over and the gold/silver ratio rises."},
               "eurusd": {"label": "EURUSD", "bias": bias(totals["eurusd"]), "score": totals["eurusd"], "main_driver": "DXY and US front-end yield pressure", "invalidation": "DXY rebounds while US 2Y rises faster."},
@@ -245,66 +286,47 @@ jobs:
               feeds = [("Federal Reserve", "https://www.federalreserve.gov/feeds/press_monetary.xml"), ("Fed speeches", "https://www.federalreserve.gov/feeds/speeches.xml"), ("BBC Business", "https://feeds.bbci.co.uk/news/business/rss.xml"), ("BBC World", "https://feeds.bbci.co.uk/news/world/rss.xml"), ("Al Jazeera", "https://www.aljazeera.com/xml/rss/all.xml"), ("EIA", "https://www.eia.gov/rss/todayinenergy.xml")]
               relevant = re.compile(r"gold|xau|silver|xag|dollar|dxy|fed|fomc|powell|waller|kashkari|yield|inflation|cpi|pce|payroll|jobs|oil|brent|wti|opec|eia|iran|hormuz|israel|lebanon|red sea|sanction|eurusd|\beur\b|eurozone|ecb", re.I)
               channels = re.compile(r"fed|fomc|yield|inflation|cpi|pce|payroll|jobs|oil|brent|wti|opec|eia|iran|hormuz|israel|lebanon|red sea|sanction|war|attack|missile|ship|shipping|tanker|ceasefire|ecb|eurozone", re.I)
-              out, seen = [], set()
-              since = datetime.now(timezone.utc) - timedelta(hours=24)
+              out, seen = [], set(); since = datetime.now(timezone.utc) - timedelta(hours=24)
               for source, url in feeds:
                   try:
-                      root = ET.fromstring(request_text(url, timeout=25, attempts=2))
+                      root = ET.fromstring(request_text(url, timeout=10, attempts=1, accept="application/rss+xml,application/xml,*/*"))
                       for item in root.findall(".//item")[:15]:
-                          title = clean(item.findtext("title"), 140)
-                          desc = clean(item.findtext("description"), 180)
-                          blob = title + " " + desc
-                          if not relevant.search(blob) or not channels.search(blob):
-                              continue
+                          title = clean(item.findtext("title"), 140); desc = clean(item.findtext("description"), 180); blob = title + " " + desc
+                          if not relevant.search(blob) or not channels.search(blob): continue
                           pub = item.findtext("pubDate") or ""
                           try:
                               dt = email.utils.parsedate_to_datetime(pub).astimezone(timezone.utc)
-                              if dt < since:
-                                  continue
-                          except Exception:
-                              pass
+                              if dt < since: continue
+                          except Exception: pass
                           key = re.sub(r"[^a-z0-9 ]", "", title.lower())[:70]
-                          if key in seen:
-                              continue
-                          seen.add(key)
-                          low = blob.lower()
-                          assets = []
+                          if key in seen: continue
+                          seen.add(key); low = blob.lower(); assets = []
                           if re.search(r"gold|xau|fed|yield|inflation|dollar|iran|hormuz|israel|lebanon|red sea|sanction", low): assets.append("XAUUSD")
                           if re.search(r"silver|xag|copper|gold|fed|yield|dollar", low): assets.append("XAGUSD")
                           if re.search(r"dollar|fed|yield|ecb|eurozone|eurusd|\beur\b", low): assets.append("EURUSD")
                           if re.search(r"oil|brent|wti|opec|eia|hormuz|iran|tanker", low): assets.append("WTI")
                           score = min(10, 3 + sum(1 for w in ("fed", "yield", "inflation", "oil", "iran", "hormuz", "gold", "dollar", "ecb") if w in low))
-                          why = "affects USD/rates, safe-haven demand, or inflation risk premium"
-                          out.append({"source": source, "title": title, "desc": desc, "assets": assets or ["Macro"], "score": score, "why": why})
+                          out.append({"source": source, "title": title, "desc": desc, "assets": assets or ["Macro"], "score": score, "why": "affects USD/rates, safe-haven demand, or inflation risk premium"})
                   except Exception as exc:
                       print("news fetch failed", source, exc)
               out.sort(key=lambda item: item["score"], reverse=True)
               return out[:5]
 
           def parse_ff(date_s, time_s):
-              if not date_s or not time_s or "tentative" in time_s.lower() or "day" in time_s.lower():
-                  return None
+              if not date_s or not time_s or "tentative" in time_s.lower() or "day" in time_s.lower(): return None
               try:
-                  base = datetime.strptime(date_s.strip(), "%m-%d-%Y")
-                  m = re.match(r"(\d{1,2}):(\d{2})(am|pm)", time_s.strip().lower().replace(" ", ""))
+                  base = datetime.strptime(date_s.strip(), "%m-%d-%Y"); m = re.match(r"(\d{1,2}):(\d{2})(am|pm)", time_s.strip().lower().replace(" ", ""))
                   if not m: return None
                   hour, minute, ampm = m.groups(); hour = int(hour) % 12
                   if ampm == "pm": hour += 12
                   return datetime(base.year, base.month, base.day, hour, int(minute), tzinfo=timezone.utc).astimezone(TZ)
-              except Exception:
-                  return None
+              except Exception: return None
 
           def calendar_sections():
               sections = {"released": [], "next6": [], "next24": [], "next72": []}
-              previous_slot = NOW.replace(hour=8, minute=0, second=0, microsecond=0)
-              for hour in (23, 13, 8):
-                  cand = NOW.replace(hour=hour, minute=0, second=0, microsecond=0)
-                  if cand < NOW:
-                      previous_slot = cand; break
-              if previous_slot > NOW:
-                  previous_slot -= timedelta(days=1)
+              previous_slot = max([NOW.replace(hour=h, minute=0, second=0, microsecond=0) for h in (8, 13, 23) if NOW.replace(hour=h, minute=0, second=0, microsecond=0) < NOW] or [NOW.replace(hour=23, minute=0, second=0, microsecond=0) - timedelta(days=1)])
               try:
-                  root = ET.fromstring(request_text("https://nfs.faireconomy.media/ff_calendar_thisweek.xml", timeout=25, attempts=2))
+                  root = ET.fromstring(request_text("https://nfs.faireconomy.media/ff_calendar_thisweek.xml", timeout=10, attempts=1, accept="application/xml,*/*"))
                   important = re.compile(r"CPI|PCE|FOMC|Fed|Powell|Kashkari|Waller|Payroll|Unemployment|GDP|ISM|PMI|Consumer|Inflation|Crude Oil Inventories|Petroleum", re.I)
                   for ev in root.findall(".//event"):
                       title = clean(ev.findtext("title"), 90); country = clean(ev.findtext("country"), 20); impact = clean(ev.findtext("impact"), 20) or "Low"
@@ -317,64 +339,40 @@ jobs:
                       elif NOW <= dt <= NOW + timedelta(hours=6): sections["next6"].append(event)
                       elif NOW < dt <= NOW + timedelta(hours=24): sections["next24"].append(event)
                       elif NOW + timedelta(hours=24) < dt <= NOW + timedelta(hours=72): sections["next72"].append(event)
-              except Exception as exc:
-                  print("calendar fetch failed", exc)
+              except Exception as exc: print("calendar fetch failed", exc)
               for key in sections: sections[key] = sorted(sections[key], key=lambda e: e["time"])[:8]
               return sections
 
-          news = news_items()
-          cal = calendar_sections()
-          previous = read_json(SNAPSHOT_STATE)
-
+          news, cal, previous = news_items(), calendar_sections(), read_json(SNAPSHOT_STATE)
           def fmt_row(row):
-              if not row.get("available"):
-                  return "Unavailable"
-              return f"{row.get('unit','')}{row['value']:.{row.get('decimals',2)}f} ({row.get('change',0):+.2f}{row.get('unit','') if row.get('unit') == '%' else ''})"
-
+              return "Unavailable" if not row.get("available") else f"{row.get('unit','')}{row['value']:.{row.get('decimals',2)}f} ({row.get('change',0):+.2f}{'%' if row.get('unit') == '%' else ''})"
           def change_line(key, label, group="markets"):
-              row = (markets if group == "markets" else rates)[key]
-              prev = previous.get(group, {}).get(key, {}).get("value")
-              if not row.get("available"):
-                  return f"{label}: unavailable"
+              row = (markets if group == "markets" else rates)[key]; prev = previous.get(group, {}).get(key, {}).get("value")
+              if not row.get("available"): return f"{label}: unavailable"
               since = "baseline" if prev is None else f"{row['value'] - prev:+.{row.get('decimals',2)}f} since last digest"
               return f"{label}: {fmt_row(row)} | {since}"
+          next_catalyst = next((f"{ev['currency']} {ev['title']}" for sec in ("next6", "next24", "next72") for ev in cal[sec][:1]), "Next USD/Fed catalyst")
 
-          next_catalyst = "Next USD/Fed catalyst"
-          for sec in ("next6", "next24", "next72"):
-              if cal[sec]:
-                  next_catalyst = f"{cal[sec][0]['currency']} {cal[sec][0]['title']}"
-                  break
-
-          xau = asset_cards["xauusd"]; xag = asset_cards["xagusd"]; eur = asset_cards["eurusd"]
-          real_line = "Real-yield confirmation is available from FRED DFII10." if rates["real10y"].get("available") else "Confidence is reduced because the real-yield feed is unavailable."
+          xau, xag, eur = cards["xauusd"], cards["xagusd"], cards["eurusd"]
+          real_source = rates["real10y"].get("source_name", "source")
+          real_line = f"Real-yield confirmation is available from {real_source}." if rates["real10y"].get("available") else "Confidence is reduced because the real-yield feed is unavailable."
           changed = "; ".join([change_line("dxy", "DXY"), change_line("real10y", "10Y real yield", "rates"), change_line("wti", "WTI"), change_line("copper", "Copper")])
           analyst = f"Metals have a {xau['bias'].lower()} tone, while EURUSD is {eur['bias'].lower()}. Since the previous digest, {changed}. Gold is mainly driven by {xau['main_driver'].lower()}; the current read is {xau['bias'].lower()} with a score of {xau['score']:+.1f}. {real_line} Silver is judged through the metals backdrop plus copper and the gold/silver ratio, which currently gives a {xag['bias'].lower()} read. EURUSD is driven by DXY and US front-end yields, with a {eur['bias'].lower()} read. The next major catalyst is {next_catalyst}. The interpretation is wrong if {xau['invalidation'].lower()} For EURUSD, invalidate if {eur['invalidation'].lower()} Treat this as a concise market map, not a trade signal."
           preheader = f"XAU {xau['bias']}; XAG {xag['bias']}; EURUSD {eur['bias']}. Next: {next_catalyst}. Real yields {'available' if rates['real10y'].get('available') else 'unavailable'}."
           subject = f"Market Dashboard | XAU: {xau['bias']} | XAG: {xag['bias']} | EURUSD: {eur['bias']}"
 
           def table_snapshot():
-              rows_html = []
+              html_rows = []
               for key, row in [("xauusd", markets["xauusd"]), ("xagusd", markets["xagusd"]), ("eurusd", markets["eurusd"]), ("dxy", markets["dxy"]), ("us10y", rates["us10y"]), ("real10y", rates["real10y"]), ("wti", markets["wti"]), ("copper", markets["copper"])]:
-                  if not row.get("available"):
-                      value = "Unavailable"; move = clean(row.get("error", "source issue"), 80); levels = "n/a"
+                  if row.get("available"):
+                      value = f"{row.get('unit','')}{row['value']:.{row.get('decimals',2)}f}"; move = f"{row.get('change',0):+.2f}" if key in {"us10y", "real10y"} else f"{row.get('pct',0):+.2f}%"; levels = "n/a" if "support" not in row else f"S {row['support']:.{row.get('decimals',2)}f} / R {row['resistance']:.{row.get('decimals',2)}f}"
                   else:
-                      value = f"{row.get('unit','')}{row['value']:.{row.get('decimals',2)}f}"
-                      move = f"{row.get('change',0):+.2f}" if key in {"us10y", "real10y"} else f"{row.get('pct',0):+.2f}%"
-                      levels = "n/a" if "support" not in row else f"S {row['support']:.{row.get('decimals',2)}f} / R {row['resistance']:.{row.get('decimals',2)}f}"
-                  rows_html.append(f"<tr><td>{html.escape(row['label'])}</td><td><b>{html.escape(value)}</b></td><td>{html.escape(move)}</td><td>{html.escape(levels)}</td></tr>")
-              return "".join(rows_html)
-
-          def matrix_html():
-              out = []
-              for row in rows:
-                  out.append(f"<tr><td><b>{html.escape(row['driver'])}</b><div class='read'>{html.escape(row['read'])}</div></td><td>{html.escape(row['xauusd'][0])}</td><td>{html.escape(row['xagusd'][0])}</td><td>{html.escape(row['eurusd'][0])}</td></tr>")
-              return "".join(out)
-
+                      value = "Unavailable"; move = clean(row.get("error", "source issue"), 80); levels = "n/a"
+                  html_rows.append(f"<tr><td>{html.escape(row['label'])}</td><td><b>{html.escape(value)}</b></td><td>{html.escape(move)}</td><td>{html.escape(levels)}</td></tr>")
+              return "".join(html_rows)
+          matrix_html = "".join(f"<tr><td><b>{html.escape(r['driver'])}</b><div class='read'>{html.escape(r['read'])}</div></td><td>{html.escape(r['xauusd'][0])}</td><td>{html.escape(r['xagusd'][0])}</td><td>{html.escape(r['eurusd'][0])}</td></tr>" for r in rows)
           def asset_card(card, market_key):
-              row = markets[market_key]
-              price = "Unavailable" if not row.get("available") else f"{row.get('unit','')}{row['value']:.{row.get('decimals',2)}f}"
-              width = max(8, min(100, abs(card['score']) / 5 * 100))
-              color = "#22c55e" if card["score"] >= 0 else "#ef4444"
+              row = markets[market_key]; price = "Unavailable" if not row.get("available") else f"{row.get('unit','')}{row['value']:.{row.get('decimals',2)}f}"; width = max(8, min(100, abs(card['score']) / 5 * 100)); color = "#22c55e" if card["score"] >= 0 else "#ef4444"
               return f"<td class='asset'><h3>{html.escape(card['label'])}</h3><div class='badge'>{html.escape(card['bias'])}</div><div class='price'>{html.escape(price)}</div><div class='bar'><span style='width:{width:.0f}%;background:{color}'></span></div><p><b>Main driver:</b> {html.escape(card['main_driver'])}</p><p><b>Invalidation:</b> {html.escape(card['invalidation'])}</p></td>"
 
           mix = {"Macro/Rates": 0, "Energy": 0, "Geopolitics": 0, "FX": 0}
@@ -384,22 +382,16 @@ jobs:
               if re.search(r"oil|brent|wti|opec|eia", blob): mix["Energy"] += 1
               if re.search(r"iran|hormuz|israel|lebanon|red sea|war|attack", blob): mix["Geopolitics"] += 1
               if re.search(r"dollar|ecb|euro|eurusd", blob): mix["FX"] += 1
-          total_mix = sum(mix.values()) or 1
-          cursor = 0.0; colors = ["#60a5fa", "#f59e0b", "#ef4444", "#22c55e"]; segs = []; legend = []
+          total_mix = sum(mix.values()) or 1; cursor = 0.0; colors = ["#60a5fa", "#f59e0b", "#ef4444", "#22c55e"]; segs = []; legend = []
           for i, (label, count) in enumerate(mix.items()):
-              share = count / total_mix * 100; segs.append(f"{colors[i]} {cursor:.1f}% {cursor+share:.1f}%"); cursor += share
-              legend.append(f"<div><span style='display:inline-block;width:10px;height:10px;background:{colors[i]};border-radius:50%;margin-right:6px'></span>{html.escape(label)}: {count}</div>")
+              share = count / total_mix * 100; segs.append(f"{colors[i]} {cursor:.1f}% {cursor + share:.1f}%"); cursor += share; legend.append(f"<div><span style='display:inline-block;width:10px;height:10px;background:{colors[i]};border-radius:50%;margin-right:6px'></span>{html.escape(label)}: {count}</div>")
           pie = f"<div style='display:flex;gap:18px;align-items:center'><div style='width:110px;height:110px;border-radius:50%;background:conic-gradient({', '.join(segs)});border:1px solid #273244'></div><div>{''.join(legend)}</div></div>"
-
           news_html = "".join(f"<div class='news'><b>{html.escape(n['title'])}</b><div>{html.escape(n['why'])}</div><div class='muted'>Impact {n['score']}/10 | Assets: {html.escape(', '.join(n['assets']))}</div></div>" for n in news) or "<p>No major matching headline found.</p>"
-          cal_html = ""
-          for key, label in (("released", "Released since last digest"), ("next6", "Upcoming next 6h"), ("next24", "Upcoming next 24h"), ("next72", "Upcoming 24-72h")):
-              items = cal[key]
-              cal_html += f"<h3>{label}</h3>" + ("".join(f"<div class='event'>{html.escape(e['time'])} Asia/Beirut | {html.escape(e['currency'])} | {html.escape(e['title'])} | {html.escape(e['impact'])}</div>" for e in items) if items else "<div class='event muted'>None found.</div>")
+          cal_html = "".join(f"<h3>{label}</h3>" + ("".join(f"<div class='event'>{html.escape(e['time'])} Asia/Beirut | {html.escape(e['currency'])} | {html.escape(e['title'])} | {html.escape(e['impact'])}</div>" for e in cal[key]) if cal[key] else "<div class='event muted'>None found.</div>") for key, label in (("released", "Released since last digest"), ("next6", "Upcoming next 6h"), ("next24", "Upcoming next 24h"), ("next72", "Upcoming 24-72h")))
 
           quality = []
           if rates["real10y"].get("available"):
-              quality.append(f"10Y real yield available from FRED DFII10: {rates['real10y']['value']:.2f}% on {rates['real10y']['date']}.")
+              quality.append(f"10Y real yield available from {rates['real10y'].get('source_name','source')}: {rates['real10y']['value']:.2f}% on {rates['real10y']['date']}.")
           else:
               quality.append(f"Real-yield feed unavailable: {rates['real10y'].get('error', 'source issue')}.")
           quality.append("XAUUSD and XAGUSD use Yahoo futures proxies GC=F and SI=F because free spot endpoints are not reliable in the free feed.")
@@ -407,42 +399,27 @@ jobs:
           quality.append(f"Calendar parser returned {sum(len(v) for v in cal.values())} timezone-aware relevant events displayed in Asia/Beirut.")
           quality_html = "".join(f"<li>{html.escape(q)}</li>" for q in quality)
 
-          css = """
-          body{margin:0;background:#080b10;color:#e5e7eb;font-family:Arial,Helvetica,sans-serif}.pre{display:none;max-height:0;overflow:hidden}.wrap{max-width:820px;margin:0 auto;padding:18px}.top,.section{border:1px solid #1f2a3a;background:#101722;border-radius:8px;padding:18px;margin:12px 0}.section.alt{background:#121a26}h1{font-size:22px;margin:6px 0}h2{font-size:17px;margin:0 0 10px}h3{font-size:14px;margin:10px 0 6px}.muted,.read{color:#9ca3af;font-size:12px}.badge{display:inline-block;border:1px solid #334155;border-radius:999px;padding:4px 8px;font-size:12px}.price{font-size:24px;font-weight:bold;margin:10px 0}.asset{width:33%;vertical-align:top;border:1px solid #1f2a3a;background:#0b111a;border-radius:8px;padding:12px}.bar{height:7px;background:#1f2a3a;border-radius:999px;overflow:hidden}.bar span{display:block;height:7px;border-radius:999px}table{width:100%;border-collapse:collapse}th,td{border-bottom:1px solid #1f2a3a;padding:8px;text-align:left;font-size:13px;vertical-align:top}.news,.event{border-top:1px solid #1f2a3a;padding:9px 0;line-height:1.4}.disclaimer{font-size:12px;color:#9ca3af}@media(max-width:680px){.wrap{padding:10px}.asset{display:block;width:auto;margin:8px 0}th,td{font-size:12px;padding:6px}}
-          """
-          html_body = f"""<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'><style>{css}</style></head><body><div class='pre'>{html.escape(preheader)}</div><div class='wrap'><div class='top'><div class='muted'>Market Intelligence Digest</div><h1>{html.escape(subject)}</h1><div class='muted'>{NOW:%Y-%m-%d %H:%M} Asia/Beirut</div></div><div class='section'><h2>Analyst Brief</h2><p>{html.escape(analyst)}</p></div><div class='section alt'><h2>Key Asset Read</h2><table role='presentation'><tr>{asset_card(xau,'xauusd')}{asset_card(xag,'xagusd')}{asset_card(eur,'eurusd')}</tr></table></div><div class='section'><h2>What Changed Since Last Digest</h2><p>{html.escape(changed)}</p></div><div class='section alt'><h2>Driver Matrix</h2><table><tr><th>Driver</th><th>XAUUSD</th><th>XAGUSD</th><th>EURUSD</th></tr>{matrix_html()}</table></div><div class='section'><h2>Live Market Snapshot</h2><table><tr><th>Asset/Driver</th><th>Now</th><th>Move</th><th>Levels</th></tr>{table_snapshot()}</table></div><div class='section alt'><h2>News Impact Mix</h2>{pie}</div><div class='section'><h2>Top News by Market Impact</h2>{news_html}</div><div class='section alt'><h2>Calendar Risk</h2>{cal_html}</div><div class='section'><h2>Data Quality</h2><ul>{quality_html}</ul></div><div class='section'><h2>Disclaimer</h2><p class='disclaimer'>Market context only; not financial advice. Directional reads are hypotheses that require live price, liquidity, risk, and invalidation review before action.</p></div></div></body></html>"""
+          css = "body{margin:0;background:#080b10;color:#e5e7eb;font-family:Arial,Helvetica,sans-serif}.pre{display:none;max-height:0;overflow:hidden}.wrap{max-width:820px;margin:0 auto;padding:18px}.top,.section{border:1px solid #1f2a3a;background:#101722;border-radius:8px;padding:18px;margin:12px 0}.section.alt{background:#121a26}h1{font-size:22px;margin:6px 0}h2{font-size:17px;margin:0 0 10px}h3{font-size:14px;margin:10px 0 6px}.muted,.read{color:#9ca3af;font-size:12px}.badge{display:inline-block;border:1px solid #334155;border-radius:999px;padding:4px 8px;font-size:12px}.price{font-size:24px;font-weight:bold;margin:10px 0}.asset{width:33%;vertical-align:top;border:1px solid #1f2a3a;background:#0b111a;border-radius:8px;padding:12px}.bar{height:7px;background:#1f2a3a;border-radius:999px;overflow:hidden}.bar span{display:block;height:7px;border-radius:999px}table{width:100%;border-collapse:collapse}th,td{border-bottom:1px solid #1f2a3a;padding:8px;text-align:left;font-size:13px;vertical-align:top}.news,.event{border-top:1px solid #1f2a3a;padding:9px 0;line-height:1.4}.disclaimer{font-size:12px;color:#9ca3af}@media(max-width:680px){.wrap{padding:10px}.asset{display:block;width:auto;margin:8px 0}th,td{font-size:12px;padding:6px}}"
+          html_body = f"<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'><style>{css}</style></head><body><div class='pre'>{html.escape(preheader)}</div><div class='wrap'><div class='top'><div class='muted'>Market Intelligence Digest</div><h1>{html.escape(subject)}</h1><div class='muted'>{NOW:%Y-%m-%d %H:%M} Asia/Beirut</div></div><div class='section'><h2>Analyst Brief</h2><p>{html.escape(analyst)}</p></div><div class='section alt'><h2>Key Asset Read</h2><table role='presentation'><tr>{asset_card(xau,'xauusd')}{asset_card(xag,'xagusd')}{asset_card(eur,'eurusd')}</tr></table></div><div class='section'><h2>What Changed Since Last Digest</h2><p>{html.escape(changed)}</p></div><div class='section alt'><h2>Driver Matrix</h2><table><tr><th>Driver</th><th>XAUUSD</th><th>XAGUSD</th><th>EURUSD</th></tr>{matrix_html}</table></div><div class='section'><h2>Live Market Snapshot</h2><table><tr><th>Asset/Driver</th><th>Now</th><th>Move</th><th>Levels</th></tr>{table_snapshot()}</table></div><div class='section alt'><h2>News Impact Mix</h2>{pie}</div><div class='section'><h2>Top News by Market Impact</h2>{news_html}</div><div class='section alt'><h2>Calendar Risk</h2>{cal_html}</div><div class='section'><h2>Data Quality</h2><ul>{quality_html}</ul></div><div class='section'><h2>Disclaimer</h2><p class='disclaimer'>Market context only; not financial advice. Directional reads are hypotheses that require live price, liquidity, risk, and invalidation review before action.</p></div></div></body></html>"
           text_body = f"Market Dashboard Digest\n{NOW:%Y-%m-%d %H:%M} Asia/Beirut\n\nAnalyst Brief\n{analyst}\n\nKey Asset Read\n- XAUUSD: {xau['bias']} | {xau['main_driver']} | Invalidation: {xau['invalidation']}\n- XAGUSD: {xag['bias']} | {xag['main_driver']} | Invalidation: {xag['invalidation']}\n- EURUSD: {eur['bias']} | {eur['main_driver']} | Invalidation: {eur['invalidation']}\n\nData Quality\n" + "\n".join(f"- {q}" for q in quality) + "\n\nMarket context only; not financial advice.\n"
 
           OUT.mkdir(parents=True, exist_ok=True)
           (OUT / "market-dashboard.html").write_text(html_body, encoding="utf-8")
           (OUT / "market-dashboard.txt").write_text(text_body, encoding="utf-8")
-          write_json(OUT / "market-dashboard.json", {"generated_at": NOW.isoformat(), "markets": markets, "rates": rates, "ratio": ratio, "driver_scores": totals, "asset_cards": asset_cards, "news": news, "calendar": cal, "quality": quality})
+          write_json(OUT / "market-dashboard.json", {"generated_at": NOW.isoformat(), "markets": markets, "rates": rates, "ratio": ratio, "driver_scores": totals, "asset_cards": cards, "news": news, "calendar": cal, "quality": quality})
 
           recipients = [x.strip() for x in os.environ.get("EMAIL_TO", "").split(",") if x.strip()]
-          if not recipients:
-              raise RuntimeError("EMAIL_TO is empty")
-          host = os.environ.get("SMTP_HOST", "smtp.gmail.com").strip()
-          port = int(os.environ.get("SMTP_PORT") or 465)
-          username = os.environ.get("SMTP_USERNAME", "").strip()
-          password = os.environ.get("SMTP_PASSWORD", "").strip()
-          sender = os.environ.get("SMTP_FROM", "").strip() or username
-          if not username or not password:
-              raise RuntimeError("SMTP_USERNAME or SMTP_PASSWORD is missing")
-          msg = EmailMessage()
-          msg["From"] = sender
-          msg["To"] = ", ".join(recipients)
-          msg["Subject"] = subject
-          msg.set_content(text_body)
-          msg.add_alternative(html_body, subtype="html")
+          if not recipients: raise RuntimeError("EMAIL_TO is empty")
+          host = os.environ.get("SMTP_HOST", "smtp.gmail.com").strip(); port = int(os.environ.get("SMTP_PORT") or 465); username = os.environ.get("SMTP_USERNAME", "").strip(); password = os.environ.get("SMTP_PASSWORD", "").strip(); sender = os.environ.get("SMTP_FROM", "").strip() or username
+          if not username or not password: raise RuntimeError("SMTP_USERNAME or SMTP_PASSWORD is missing")
+          msg = EmailMessage(); msg["From"] = sender; msg["To"] = ", ".join(recipients); msg["Subject"] = subject; msg.set_content(text_body); msg.add_alternative(html_body, subtype="html")
           if port == 465:
               with smtplib.SMTP_SSL(host, port, timeout=30) as smtp:
-                  smtp.login(username, password)
-                  smtp.send_message(msg)
+                  smtp.login(username, password); smtp.send_message(msg)
           else:
               with smtplib.SMTP(host, port, timeout=30) as smtp:
                   smtp.ehlo(); smtp.starttls(); smtp.ehlo(); smtp.login(username, password); smtp.send_message(msg)
-          send_state = read_json(SEND_STATE)
-          sent = list(dict.fromkeys([*send_state.get("sent_slots", []), slot]))[-90:]
+          sent = list(dict.fromkeys([*read_json(SEND_STATE).get("sent_slots", []), slot]))[-90:]
           write_json(SEND_STATE, {"sent_slots": sent, "updated_at": NOW.isoformat()})
           write_json(SNAPSHOT_STATE, {"generated_at": NOW.isoformat(), "markets": markets, "rates": rates, "ratio": ratio, "driver_scores": totals})
           print(f"Sent dashboard digest to {', '.join(recipients)}")
