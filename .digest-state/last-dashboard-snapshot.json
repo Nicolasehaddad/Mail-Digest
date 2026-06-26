@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-26T18:33:55.036777+03:00",
+  "generated_at": "2026-06-26T19:31:43.497880+03:00",
   "markets": {
     "xauusd": {
       "label": "XAUUSD",
@@ -7,13 +7,12 @@
       "unit": "$",
       "decimals": 1,
       "available": true,
-      "error": "",
-      "value": 4096.2001953125,
+      "value": 4101.60009765625,
       "previous": 4030.5,
-      "change": 65.7001953125,
-      "pct": 1.6300755566927179,
-      "support": 4041.199951171875,
-      "resistance": 4108.7001953125
+      "change": 71.10009765625,
+      "pct": 1.7640515483500807,
+      "support": 4044.60009765625,
+      "resistance": 4111.5
     },
     "xagusd": {
       "label": "XAGUSD",
@@ -21,13 +20,12 @@
       "unit": "$",
       "decimals": 3,
       "available": true,
-      "error": "",
-      "value": 59.52000045776367,
+      "value": 59.665000915527344,
       "previous": 58.348,
-      "change": 1.172000457763673,
-      "pct": 2.0086386127436637,
-      "support": 57.96500015258789,
-      "resistance": 59.95000076293945
+      "change": 1.3170009155273448,
+      "pct": 2.2571483436061985,
+      "support": 58.08000183105469,
+      "resistance": 60.0
     },
     "eurusd": {
       "label": "EURUSD",
@@ -35,12 +33,11 @@
       "unit": "",
       "decimals": 4,
       "available": true,
-      "error": "",
-      "value": 1.1405109167099,
+      "value": 1.1397310495376587,
       "previous": 1.1354,
-      "change": 0.0051109167098999375,
-      "pct": 0.4501423912189482,
-      "support": 1.1386927366256714,
+      "change": 0.004331049537658727,
+      "pct": 0.38145583386108217,
+      "support": 1.1394712924957275,
       "resistance": 1.143379807472229
     },
     "dxy": {
@@ -49,13 +46,12 @@
       "unit": "",
       "decimals": 2,
       "available": true,
-      "error": "",
-      "value": 101.22799682617188,
+      "value": 101.28600311279297,
       "previous": 101.43,
-      "change": -0.20200317382813182,
-      "pct": -0.1991552537002187,
+      "change": -0.14399688720703807,
+      "pct": -0.1419667625032417,
       "support": 101.04499816894531,
-      "resistance": 101.41200256347656
+      "resistance": 101.322998046875
     },
     "wti": {
       "label": "WTI",
@@ -63,12 +59,11 @@
       "unit": "$",
       "decimals": 2,
       "available": true,
-      "error": "",
-      "value": 68.62000274658203,
+      "value": 69.22000122070312,
       "previous": 71.92,
-      "change": -3.2999972534179705,
-      "pct": -4.588427771715755,
-      "support": 68.56999969482422,
+      "change": -2.6999987792968767,
+      "pct": -3.75416960413915,
+      "support": 68.55999755859375,
       "resistance": 70.58000183105469
     },
     "copper": {
@@ -77,41 +72,12 @@
       "unit": "$",
       "decimals": 3,
       "available": true,
-      "error": "",
-      "value": 6.196499824523926,
+      "value": 6.204999923706055,
       "previous": 6.0705,
-      "change": 0.12599982452392577,
-      "pct": 2.0756086734853105,
-      "support": 6.085000038146973,
+      "change": 0.13449992370605468,
+      "pct": 2.2156317223631445,
+      "support": 6.101500034332275,
       "resistance": 6.243000030517578
-    },
-    "spx": {
-      "label": "S&P 500",
-      "symbol": "^GSPC",
-      "unit": "",
-      "decimals": 1,
-      "available": true,
-      "error": "",
-      "value": 7374.2099609375,
-      "previous": 7358.22,
-      "change": 15.989960937499745,
-      "pct": 0.21730745937875934,
-      "support": 7294.18017578125,
-      "resistance": 7406.169921875
-    },
-    "vix": {
-      "label": "VIX",
-      "symbol": "^VIX",
-      "unit": "",
-      "decimals": 2,
-      "available": true,
-      "error": "",
-      "value": 19.270000457763672,
-      "previous": 18.89,
-      "change": 0.3800004577636713,
-      "pct": 2.0116487970549035,
-      "support": 19.0,
-      "resistance": 20.719999313354492
     }
   },
   "rates": {
@@ -138,21 +104,18 @@
       "decimals": 2,
       "available": true,
       "date": "2026-06-26",
-      "previous_date": "previous session",
       "value": 2.17,
       "previous": 2.1799999999999997,
       "change": -0.01,
-      "pct": 0.0,
-      "source_name": "Trading Economics fallback",
-      "source_url": "https://tradingeconomics.com/united-states/10-year-tips-yield"
+      "source_name": "Trading Economics fallback"
     }
   },
   "ratio": {
     "label": "Gold/silver ratio",
     "available": true,
-    "value": 68.82056726829543,
+    "value": 68.74382024167272,
     "previous": 69.07691780352368,
-    "change": -0.25635053522825046,
+    "change": -0.3330975618509626,
     "unit": "",
     "decimals": 2
   },
