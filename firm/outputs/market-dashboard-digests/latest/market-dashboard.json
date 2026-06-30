@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-26T19:31:43.497880+03:00",
+  "generated_at": "2026-06-30T16:49:00.363898+03:00",
   "markets": {
     "xauusd": {
       "label": "XAUUSD",
@@ -7,12 +7,12 @@
       "unit": "$",
       "decimals": 1,
       "available": true,
-      "value": 4101.60009765625,
-      "previous": 4030.5,
-      "change": 71.10009765625,
-      "pct": 1.7640515483500807,
-      "support": 4044.60009765625,
-      "resistance": 4111.5
+      "value": 4031.0,
+      "previous": 4022.3,
+      "change": 8.699999999999818,
+      "pct": 0.21629416005767393,
+      "support": 3989.800048828125,
+      "resistance": 4051.800048828125
     },
     "xagusd": {
       "label": "XAGUSD",
@@ -20,12 +20,12 @@
       "unit": "$",
       "decimals": 3,
       "available": true,
-      "value": 59.665000915527344,
-      "previous": 58.348,
-      "change": 1.3170009155273448,
-      "pct": 2.2571483436061985,
-      "support": 58.08000183105469,
-      "resistance": 60.0
+      "value": 59.400001525878906,
+      "previous": 58.175,
+      "change": 1.225001525878909,
+      "pct": 2.1057181364484903,
+      "support": 57.68000030517578,
+      "resistance": 60.084999084472656
     },
     "eurusd": {
       "label": "EURUSD",
@@ -33,12 +33,12 @@
       "unit": "",
       "decimals": 4,
       "available": true,
-      "value": 1.1397310495376587,
-      "previous": 1.1354,
-      "change": 0.004331049537658727,
-      "pct": 0.38145583386108217,
-      "support": 1.1394712924957275,
-      "resistance": 1.143379807472229
+      "value": 1.1402509212493896,
+      "previous": 1.1386,
+      "change": 0.001650921249389592,
+      "pct": 0.14499571837252695,
+      "support": 1.1386927366256714,
+      "resistance": 1.1411616802215576
     },
     "dxy": {
       "label": "DXY",
@@ -46,12 +46,12 @@
       "unit": "",
       "decimals": 2,
       "available": true,
-      "value": 101.28600311279297,
-      "previous": 101.43,
-      "change": -0.14399688720703807,
-      "pct": -0.1419667625032417,
-      "support": 101.04499816894531,
-      "resistance": 101.322998046875
+      "value": 101.34200286865234,
+      "previous": 101.11,
+      "change": 0.23200286865234432,
+      "pct": 0.22945590807273694,
+      "support": 101.22799682617188,
+      "resistance": 101.43199920654297
     },
     "wti": {
       "label": "WTI",
@@ -59,12 +59,12 @@
       "unit": "$",
       "decimals": 2,
       "available": true,
-      "value": 69.22000122070312,
-      "previous": 71.92,
-      "change": -2.6999987792968767,
-      "pct": -3.75416960413915,
-      "support": 68.55999755859375,
-      "resistance": 70.58000183105469
+      "value": 70.9000015258789,
+      "previous": 70.75,
+      "change": 0.15000152587890625,
+      "pct": 0.2120162909949205,
+      "support": 69.75,
+      "resistance": 71.5999984741211
     },
     "copper": {
       "label": "Copper",
@@ -72,12 +72,12 @@
       "unit": "$",
       "decimals": 3,
       "available": true,
-      "value": 6.204999923706055,
-      "previous": 6.0705,
-      "change": 0.13449992370605468,
-      "pct": 2.2156317223631445,
-      "support": 6.101500034332275,
-      "resistance": 6.243000030517578
+      "value": 6.238500118255615,
+      "previous": 6.0975,
+      "change": 0.1410001182556151,
+      "pct": 2.312425063642724,
+      "support": 6.172999858856201,
+      "resistance": 6.289000034332275
     }
   },
   "rates": {
@@ -86,16 +86,26 @@
       "series": "DGS2",
       "unit": "%",
       "decimals": 2,
-      "available": false,
-      "error": "fred_api: RuntimeError: FRED_API_KEY not set | fred_csv: RuntimeError: TimeoutError: The read operation timed out"
+      "available": true,
+      "date": "2026-06-26",
+      "previous_date": "2026-06-25",
+      "value": 4.07,
+      "previous": 4.09,
+      "change": -0.019999999999999574,
+      "source_name": "FRED CSV"
     },
     "us10y": {
       "label": "US 10Y yield",
       "series": "DGS10",
       "unit": "%",
       "decimals": 2,
-      "available": false,
-      "error": "fred_api: RuntimeError: FRED_API_KEY not set | fred_csv: RuntimeError: TimeoutError: The read operation timed out"
+      "available": true,
+      "date": "2026-06-26",
+      "previous_date": "2026-06-25",
+      "value": 4.38,
+      "previous": 4.4,
+      "change": -0.020000000000000462,
+      "source_name": "FRED CSV"
     },
     "real10y": {
       "label": "US 10Y real yield",
@@ -104,102 +114,80 @@
       "decimals": 2,
       "available": true,
       "date": "2026-06-26",
-      "value": 2.17,
-      "previous": 2.1799999999999997,
-      "change": -0.01,
-      "source_name": "Trading Economics fallback"
+      "previous_date": "2026-06-25",
+      "value": 2.18,
+      "previous": 2.19,
+      "change": -0.009999999999999787,
+      "source_name": "FRED CSV"
     }
   },
   "ratio": {
     "label": "Gold/silver ratio",
     "available": true,
-    "value": 68.74382024167272,
-    "previous": 69.07691780352368,
-    "change": -0.3330975618509626,
+    "value": 67.86195111870168,
+    "previous": 69.1413837559089,
+    "change": -1.279432637207222,
     "unit": "",
     "decimals": 2
   },
   "cards": {
     "xauusd": [
       "XAUUSD",
-      "Strong bullish",
-      3.0,
+      "Mixed",
+      0.5,
       "DXY and real-yield pressure",
       "DXY and real yields rise together"
     ],
     "xagusd": [
       "XAGUSD",
-      "Strong bullish",
-      4.3,
+      "Bullish",
+      2.3,
       "metals macro plus copper/ratio confirmation",
       "copper rolls over and the gold/silver ratio rises"
     ],
     "eurusd": [
       "EURUSD",
-      "Bullish",
-      1.8,
+      "Bearish",
+      -2.0,
       "DXY and US front-end yield pressure",
       "DXY rebounds while US 2Y rises faster"
     ]
   },
   "driver_scores": {
-    "xauusd": 3.0,
-    "xagusd": 4.3,
-    "eurusd": 1.8
+    "xauusd": 0.5,
+    "xagusd": 2.3,
+    "eurusd": -2.0
   },
   "news": [
     {
       "source": "BBC Business",
-      "title": "Oil price falls back to pre-Iran war levels",
-      "desc": "Signs that traffic through the key Strait of Hormuz shipping route is gradually resuming has helped to push the oil price down.",
+      "title": "Supreme Court blocks Trump's attempt to fire Federal Reserve Governor Lisa Cook",
+      "desc": "The decision, seen as a win for central bank independence, sends the fight over removal back to the lower courts.",
       "assets": [
         "XAUUSD",
-        "WTI"
+        "XAGUSD",
+        "EURUSD"
       ],
-      "score": 6,
+      "score": 4,
       "why": "May affect USD/rates, safe-haven demand, energy inflation, or EUR repricing.",
       "new": false
     },
     {
-      "source": "BBC Business",
-      "title": "What's happening to petrol prices now oil is back to pre-Iran war levels?",
-      "desc": "When the conflict began on 28 February, fuel costs jumped as the war disrupted the production and transportation of energy across the Middle East.",
-      "assets": [
-        "XAUUSD",
-        "WTI"
-      ],
-      "score": 5,
-      "why": "May affect USD/rates, safe-haven demand, energy inflation, or EUR repricing.",
-      "new": true
-    },
-    {
-      "source": "Al Jazeera",
-      "title": "Why has the UN paused plans to evacuate sailors from the Strait of Hormuz?",
-      "desc": "A cargo vessel had been struck by a projectile near Oman, as Iran says all ships must pass with its permission.",
-      "assets": [
-        "XAUUSD",
-        "WTI"
-      ],
-      "score": 5,
-      "why": "May affect USD/rates, safe-haven demand, energy inflation, or EUR repricing.",
-      "new": true
-    },
-    {
-      "source": "Al Jazeera",
-      "title": "Iran slams the GCC and the US for 'interventionist' statement: What we know",
-      "desc": "Tehran rejects US-GCC pressure over missiles, the Strait of Hormuz and regional armed groups.",
-      "assets": [
-        "XAUUSD",
-        "WTI"
-      ],
-      "score": 5,
-      "why": "May affect USD/rates, safe-haven demand, energy inflation, or EUR repricing.",
-      "new": true
-    },
-    {
       "source": "BBC World",
-      "title": "UN pauses Strait of Hormuz evacuation plan after cargo ship attacked",
-      "desc": "The ship was reportedly struck by an \"unknown projectile\" near Oman but no casualties were reported.",
+      "title": "US says it has agreed to 'stand down' after exchange of strikes with Iran",
+      "desc": "A series of strikes over the weekend saw the US and Iran accuse each other of violating the ceasefire agreement.",
+      "assets": [
+        "XAUUSD",
+        "WTI"
+      ],
+      "score": 4,
+      "why": "May affect USD/rates, safe-haven demand, energy inflation, or EUR repricing.",
+      "new": false
+    },
+    {
+      "source": "Al Jazeera",
+      "title": "US envoys in Doha for indirect talks with Iranian technical delegation",
+      "desc": "Iran says it has sent an expert delegation to Doha to follow up on the release of frozen Iranian funds.",
       "assets": [
         "XAUUSD",
         "WTI"
@@ -207,52 +195,205 @@
       "score": 4,
       "why": "May affect USD/rates, safe-haven demand, energy inflation, or EUR repricing.",
       "new": true
+    },
+    {
+      "source": "Al Jazeera",
+      "title": "Are US and Iranian negotiators meeting in Doha? What we know about talks",
+      "desc": "Trump says Iran wants to meet in Qatar after attacks, but Tehran says it is sending a delegation only over frozen funds.",
+      "assets": [
+        "XAUUSD",
+        "WTI"
+      ],
+      "score": 4,
+      "why": "May affect USD/rates, safe-haven demand, energy inflation, or EUR repricing.",
+      "new": true
+    },
+    {
+      "source": "Al Jazeera",
+      "title": "Top 5 World Cup knockout shocks - Paraguay win hurts Germany again",
+      "desc": "Paraguay's longshot win against Germany in the Round of 32 is the latest in a long line of World Cup knockout boilovers.",
+      "assets": [
+        "WTI"
+      ],
+      "score": 4,
+      "why": "May affect USD/rates, safe-haven demand, energy inflation, or EUR repricing.",
+      "new": false
     }
   ],
   "calendar": {
     "released": [
       {
-        "time": "2026-06-26 17:00",
-        "currency": "USD",
-        "title": "Revised UoM Consumer Sentiment",
-        "impact": "Medium",
-        "forecast": "50.0",
-        "previous": "48.9"
+        "time": "2026-06-30 15:30",
+        "currency": "CAD",
+        "title": "GDP m/m",
+        "impact": "High",
+        "forecast": "0.4%",
+        "previous": "-0.1%"
       },
       {
-        "time": "2026-06-26 17:00",
+        "time": "2026-06-30 16:45",
         "currency": "USD",
-        "title": "Revised UoM Inflation Expectations",
-        "impact": "Medium",
-        "forecast": "n/a",
-        "previous": "4.6%"
-      },
-      {
-        "time": "2026-06-26 18:30",
-        "currency": "USD",
-        "title": "FOMC Member Kashkari Speaks",
+        "title": "Chicago PMI",
         "impact": "Low",
-        "forecast": "n/a",
-        "previous": "n/a"
+        "forecast": "55.7",
+        "previous": "62.7"
       }
     ],
     "next6": [
       {
-        "time": "2026-06-26 20:30",
+        "time": "2026-06-30 17:00",
         "currency": "USD",
-        "title": "President Trump Speaks",
+        "title": "CB Consumer Confidence",
+        "impact": "Medium",
+        "forecast": "94.4",
+        "previous": "93.1"
+      },
+      {
+        "time": "2026-06-30 17:00",
+        "currency": "USD",
+        "title": "JOLTS Job Openings",
+        "impact": "Medium",
+        "forecast": "7.28M",
+        "previous": "7.62M"
+      }
+    ],
+    "next24": [
+      {
+        "time": "2026-07-01 03:30",
+        "currency": "JPY",
+        "title": "Final Manufacturing PMI",
+        "impact": "Low",
+        "forecast": "54.9",
+        "previous": "54.9"
+      },
+      {
+        "time": "2026-07-01 04:45",
+        "currency": "CNY",
+        "title": "RatingDog Manufacturing PMI",
+        "impact": "Low",
+        "forecast": "51.9",
+        "previous": "51.8"
+      },
+      {
+        "time": "2026-07-01 10:15",
+        "currency": "EUR",
+        "title": "Spanish Manufacturing PMI",
+        "impact": "Low",
+        "forecast": "51.0",
+        "previous": "51.2"
+      },
+      {
+        "time": "2026-07-01 10:30",
+        "currency": "CHF",
+        "title": "Manufacturing PMI",
+        "impact": "Low",
+        "forecast": "56.4",
+        "previous": "57.3"
+      },
+      {
+        "time": "2026-07-01 10:45",
+        "currency": "EUR",
+        "title": "Italian Manufacturing PMI",
+        "impact": "Low",
+        "forecast": "52.4",
+        "previous": "52.9"
+      },
+      {
+        "time": "2026-07-01 10:50",
+        "currency": "EUR",
+        "title": "French Final Manufacturing PMI",
+        "impact": "Low",
+        "forecast": "50.7",
+        "previous": "50.7"
+      },
+      {
+        "time": "2026-07-01 10:55",
+        "currency": "EUR",
+        "title": "German Final Manufacturing PMI",
+        "impact": "Low",
+        "forecast": "50.0",
+        "previous": "50.0"
+      },
+      {
+        "time": "2026-07-01 11:00",
+        "currency": "EUR",
+        "title": "Final Manufacturing PMI",
+        "impact": "Low",
+        "forecast": "51.3",
+        "previous": "51.3"
+      }
+    ],
+    "next72": [
+      {
+        "time": "2026-07-01 17:00",
+        "currency": "EUR",
+        "title": "ECB President Lagarde Speaks",
         "impact": "Medium",
         "forecast": "n/a",
         "previous": "n/a"
+      },
+      {
+        "time": "2026-07-01 17:00",
+        "currency": "USD",
+        "title": "ISM Manufacturing PMI",
+        "impact": "High",
+        "forecast": "53.8",
+        "previous": "54.0"
+      },
+      {
+        "time": "2026-07-01 17:00",
+        "currency": "USD",
+        "title": "ISM Manufacturing Prices",
+        "impact": "Medium",
+        "forecast": "77.7",
+        "previous": "82.1"
+      },
+      {
+        "time": "2026-07-01 17:30",
+        "currency": "USD",
+        "title": "Crude Oil Inventories",
+        "impact": "Low",
+        "forecast": "-4.8M",
+        "previous": "-6.1M"
+      },
+      {
+        "time": "2026-07-02 09:30",
+        "currency": "CHF",
+        "title": "CPI m/m",
+        "impact": "Medium",
+        "forecast": "0.1%",
+        "previous": "0.2%"
+      },
+      {
+        "time": "2026-07-02 10:00",
+        "currency": "EUR",
+        "title": "Spanish Unemployment Change",
+        "impact": "Low",
+        "forecast": "-40.8K",
+        "previous": "-36.3K"
+      },
+      {
+        "time": "2026-07-02 11:00",
+        "currency": "EUR",
+        "title": "Italian Monthly Unemployment Rate",
+        "impact": "Low",
+        "forecast": "5.1%",
+        "previous": "5.1%"
+      },
+      {
+        "time": "2026-07-02 12:00",
+        "currency": "EUR",
+        "title": "Unemployment Rate",
+        "impact": "Low",
+        "forecast": "6.3%",
+        "previous": "6.3%"
       }
-    ],
-    "next24": [],
-    "next72": []
+    ]
   },
   "quality": [
-    "10Y real yield available from Trading Economics fallback: 2.17% on 2026-06-26.",
+    "10Y real yield available from FRED CSV: 2.18% on 2026-06-26.",
     "XAUUSD and XAGUSD use Yahoo futures proxies GC=F and SI=F.",
     "News filter returned 5 market-impact items.",
-    "Calendar parser returned 4 relevant Asia/Beirut events."
+    "Calendar parser returned 20 relevant Asia/Beirut events."
   ]
 }

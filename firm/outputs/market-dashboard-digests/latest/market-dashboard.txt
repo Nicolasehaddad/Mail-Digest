@@ -1,12 +1,12 @@
-Market Dashboard Digest - 2026-06-26 19:31 Asia/Beirut
+Market Dashboard Digest - 2026-06-30 16:49 Asia/Beirut
 
 Analyst Brief
-Metals are strong bullish while EURUSD is bullish. Since the previous digest: DXY: +0.06; US 10Y real yield: +0.00 pts; WTI: +0.60; Copper: +0.009; Gold/silver ratio: -0.08. XAUUSD is driven by DXY and real-yield pressure; XAGUSD is filtered through copper and the gold/silver ratio; EURUSD is filtered through DXY and US front-end yields. Real-yield confirmation is available from Trading Economics fallback. The next major catalyst is USD President Trump Speaks. The view is wrong if DXY and real yields rise together for metals, or if DXY rebounds while US 2Y rises faster for EURUSD. Treat this as a concise market map, not a trade signal.
+Metals are mixed while EURUSD is bearish. Since the previous digest: DXY: +0.06; US 10Y real yield: +0.01 pts; WTI: +1.68; Copper: +0.034; Gold/silver ratio: -0.88. XAUUSD is driven by DXY and real-yield pressure; XAGUSD is filtered through copper and the gold/silver ratio; EURUSD is filtered through DXY and US front-end yields. Real-yield confirmation is available from FRED CSV. The next major catalyst is USD CB Consumer Confidence. The view is wrong if DXY and real yields rise together for metals, or if DXY rebounds while US 2Y rises faster for EURUSD. Treat this as a concise market map, not a trade signal.
 
 Data Quality
-- 10Y real yield available from Trading Economics fallback: 2.17% on 2026-06-26.
+- 10Y real yield available from FRED CSV: 2.18% on 2026-06-26.
 - XAUUSD and XAGUSD use Yahoo futures proxies GC=F and SI=F.
 - News filter returned 5 market-impact items.
-- Calendar parser returned 4 relevant Asia/Beirut events.
+- Calendar parser returned 20 relevant Asia/Beirut events.
 
 Market context only; not financial advice.
