@@ -3,10 +3,10 @@ name: Market Intelligence Digest
 on:
   workflow_dispatch:
   schedule:
-    # GitHub cron is UTC. These minutes target 08:00, 13:00, and 23:00
-    # Beirut in both UTC+2 and UTC+3, while avoiding GitHub's busy :00 minute.
-    # The bash gate and Python script both verify the real Asia/Beirut time.
-    - cron: "1,6,11 5,6,10,11,20,21 * * *"
+    # Runs at 08:01/08:06/08:11, 13:01/13:06/13:11, and 23:01/23:06/23:11
+    # in Beirut time. The bash gate and Python script both enforce the 15-minute window.
+    - cron: "1,6,11 8,13,23 * * *"
+      timezone: "Asia/Beirut"
   push:
     branches:
       - main
