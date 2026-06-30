@@ -6,6 +6,7 @@ on:
     # GitHub cron is evaluated in UTC. These attempts cover 08:00, 13:00, and 23:00
     # Beirut time in both UTC+2 and UTC+3. The bash gate and Python script both
     # enforce the real Asia/Beirut slot and the first 15 minutes only.
+    # Test-trigger marker refreshed on 2026-06-30 after restoring UTC cron.
     - cron: "1,6,11 5,6,10,11,20,21 * * *"
   push:
     branches:
