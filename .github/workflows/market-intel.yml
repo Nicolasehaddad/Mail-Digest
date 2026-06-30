@@ -3,9 +3,10 @@ name: Market Intelligence Digest
 on:
   workflow_dispatch:
   schedule:
-    # GitHub cron is UTC. These hours cover Beirut UTC+2 and UTC+3.
-    # The script checks the real Asia/Beirut time and prevents duplicate sends.
-    - cron: "*/10 5,6,10,11,20,21 * * *"
+    # GitHub cron is UTC. These minutes target 08:00, 13:00, and 23:00
+    # Beirut in both UTC+2 and UTC+3, while avoiding GitHub's busy :00 minute.
+    # The bash gate and Python script both verify the real Asia/Beirut time.
+    - cron: "1,6,11 5,6,10,11,20,21 * * *"
   push:
     branches:
       - main
@@ -39,6 +40,9 @@ jobs:
         shell: bash
         run: |
           local_time="$(TZ=Asia/Beirut date +'%Y-%m-%d %H:%M')"
+          local_hour="$(TZ=Asia/Beirut date +'%H')"
+          local_minute="$(TZ=Asia/Beirut date +'%M')"
+          minute_num=$((10#$local_minute))
           commit_message="$(python - <<'PY'
           import json, os
           path = os.environ.get("GITHUB_EVENT_PATH", "")
@@ -63,8 +67,12 @@ jobs:
             force=true
             reason="one-time push test"
           elif [ "$GITHUB_EVENT_NAME" = "schedule" ]; then
-            send=true
-            reason="scheduled candidate; Python will validate the Beirut slot"
+            if { [ "$local_hour" = "08" ] || [ "$local_hour" = "13" ] || [ "$local_hour" = "23" ]; } && [ "$minute_num" -le 14 ]; then
+              send=true
+              reason="scheduled Beirut send window"
+            else
+              reason="scheduled run outside Beirut send window"
+            fi
           fi
 
           echo "send=$send" >> "$GITHUB_OUTPUT"
@@ -94,7 +102,7 @@ jobs:
             --state-file ".digest-state/dashboard-send-slots.json" \
             --snapshot-file ".digest-state/last-dashboard-snapshot.json" \
             --scheduled-slots "8,13,23" \
-            --send-window-minutes 55 \
+            --send-window-minutes 15 \
             --send-email \
             $force_arg
 
@@ -105,5 +113,10 @@ jobs:
           git config user.name "market-intel-bot"
           git config user.email "market-intel-bot@example.com"
           git add .digest-state firm/outputs/market-dashboard-digests/latest
-          git commit -m "Update dashboard digest state" || echo "No digest state changes"
-          git push
+          if git diff --cached --quiet; then
+            echo "No digest state changes"
+          else
+            git commit -m "Update dashboard digest state"
+            git pull --rebase origin main || true
+            git push || echo "State push skipped; email already sent"
+          fi
