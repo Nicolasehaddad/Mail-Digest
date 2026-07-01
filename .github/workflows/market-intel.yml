@@ -3,11 +3,10 @@ name: Market Intelligence Digest
 on:
   workflow_dispatch:
   schedule:
-    # GitHub cron is evaluated in UTC. These attempts cover 08:00, 13:00, and 23:00
-    # Beirut time in both UTC+2 and UTC+3. The bash gate and Python script both
-    # enforce the real Asia/Beirut slot and the first 15 minutes only.
-    # Test-trigger marker refreshed on 2026-06-30 after restoring UTC cron.
-    - cron: "1,6,11 5,6,10,11,20,21 * * *"
+    # GitHub cron is evaluated in UTC and can be delayed or dropped.
+    # Run a cheap gate every 5 minutes, offset from :00, then send only inside
+    # the real Asia/Beirut 08:00, 13:00, or 23:00 first-15-minute windows.
+    - cron: "1,6,11,16,21,26,31,36,41,46,51,56 * * * *"
   push:
     branches:
       - main
@@ -28,14 +27,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
       - name: Decide whether to send
         id: send_window
         shell: bash
@@ -44,16 +35,6 @@ jobs:
           local_hour="$(TZ=Asia/Beirut date +'%H')"
           local_minute="$(TZ=Asia/Beirut date +'%M')"
           minute_num=$((10#$local_minute))
-          commit_message="$(python - <<'PY'
-          import json, os
-          path = os.environ.get("GITHUB_EVENT_PATH", "")
-          try:
-              with open(path, "r", encoding="utf-8") as fh:
-                  print(json.load(fh).get("head_commit", {}).get("message", ""))
-          except Exception:
-              print("")
-          PY
-          )"
 
           send=false
           force=false
@@ -63,7 +44,7 @@ jobs:
             send=true
             force=true
             reason="manual workflow run"
-          elif [ "$GITHUB_EVENT_NAME" = "push" ] && printf "%s" "$commit_message" | grep -q "\[send-test-digest\]"; then
+          elif [ "$GITHUB_EVENT_NAME" = "push" ] && grep -q "\[send-test-digest\]" "$GITHUB_EVENT_PATH"; then
             send=true
             force=true
             reason="one-time push test"
@@ -80,6 +61,22 @@ jobs:
           echo "force=$force" >> "$GITHUB_OUTPUT"
           echo "Local Beirut time: $local_time"
           echo "Decision: $send ($reason)"
+
+      - name: Check out repository
+        if: steps.send_window.outputs.send == 'true'
+        uses: actions/checkout@v4
+
+      - name: Refresh latest state
+        if: steps.send_window.outputs.send == 'true'
+        shell: bash
+        run: |
+          git pull --rebase origin main || true
+
+      - name: Set up Python
+        if: steps.send_window.outputs.send == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
       - name: Build and send dashboard digest
         if: steps.send_window.outputs.send == 'true'
