@@ -6,6 +6,7 @@ on:
     # GitHub cron is evaluated in UTC and can be delayed or dropped.
     # Run a cheap gate every 5 minutes, offset from :00, then send only inside
     # the real Asia/Beirut 08:00, 13:00, or 23:00 first-15-minute windows.
+    # Delivery test refreshed on 2026-07-01 after schedule-frequency change.
     - cron: "1,6,11,16,21,26,31,36,41,46,51,56 * * * *"
   push:
     branches:
