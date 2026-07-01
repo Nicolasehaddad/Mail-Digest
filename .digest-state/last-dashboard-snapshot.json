@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-30T16:49:00.363898+03:00",
+  "generated_at": "2026-07-01T13:42:16.760226+03:00",
   "markets": {
     "xauusd": {
       "label": "XAUUSD",
@@ -7,12 +7,12 @@
       "unit": "$",
       "decimals": 1,
       "available": true,
-      "value": 4031.0,
-      "previous": 4022.3,
-      "change": 8.699999999999818,
-      "pct": 0.21629416005767393,
-      "support": 3989.800048828125,
-      "resistance": 4051.800048828125
+      "value": 4002.699951171875,
+      "previous": 4022.9,
+      "change": -20.20004882812509,
+      "pct": -0.5021265462259835,
+      "support": 3973.0,
+      "resistance": 4003.5
     },
     "xagusd": {
       "label": "XAGUSD",
@@ -20,12 +20,12 @@
       "unit": "$",
       "decimals": 3,
       "available": true,
-      "value": 59.400001525878906,
-      "previous": 58.175,
-      "change": 1.225001525878909,
-      "pct": 2.1057181364484903,
-      "support": 57.68000030517578,
-      "resistance": 60.084999084472656
+      "value": 58.470001220703125,
+      "previous": 59.477,
+      "change": -1.0069987792968718,
+      "pct": -1.6930893947187515,
+      "support": 57.55500030517578,
+      "resistance": 58.58000183105469
     },
     "eurusd": {
       "label": "EURUSD",
@@ -33,12 +33,12 @@
       "unit": "",
       "decimals": 4,
       "available": true,
-      "value": 1.1402509212493896,
-      "previous": 1.1386,
-      "change": 0.001650921249389592,
-      "pct": 0.14499571837252695,
-      "support": 1.1386927366256714,
-      "resistance": 1.1411616802215576
+      "value": 1.1399909257888794,
+      "previous": 1.1422,
+      "change": -0.0022090742111207096,
+      "pct": -0.1934052014639038,
+      "support": 1.1389521360397339,
+      "resistance": 1.141422152519226
     },
     "dxy": {
       "label": "DXY",
@@ -46,12 +46,12 @@
       "unit": "",
       "decimals": 2,
       "available": true,
-      "value": 101.34200286865234,
-      "previous": 101.11,
-      "change": 0.23200286865234432,
-      "pct": 0.22945590807273694,
-      "support": 101.22799682617188,
-      "resistance": 101.43199920654297
+      "value": 101.3550033569336,
+      "previous": 101.19,
+      "change": 0.16500335693359602,
+      "pct": 0.16306290832453407,
+      "support": 101.27100372314453,
+      "resistance": 101.43000030517578
     },
     "wti": {
       "label": "WTI",
@@ -59,12 +59,12 @@
       "unit": "$",
       "decimals": 2,
       "available": true,
-      "value": 70.9000015258789,
-      "previous": 70.75,
-      "change": 0.15000152587890625,
-      "pct": 0.2120162909949205,
-      "support": 69.75,
-      "resistance": 71.5999984741211
+      "value": 68.75,
+      "previous": 69.5,
+      "change": -0.75,
+      "pct": -1.079136690647482,
+      "support": 68.22000122070312,
+      "resistance": 69.87000274658203
     },
     "copper": {
       "label": "Copper",
@@ -72,12 +72,12 @@
       "unit": "$",
       "decimals": 3,
       "available": true,
-      "value": 6.238500118255615,
-      "previous": 6.0975,
-      "change": 0.1410001182556151,
-      "pct": 2.312425063642724,
-      "support": 6.172999858856201,
-      "resistance": 6.289000034332275
+      "value": 6.098499774932861,
+      "previous": 6.193,
+      "change": -0.09450022506713829,
+      "pct": -1.525919991395742,
+      "support": 6.093999862670898,
+      "resistance": 6.166500091552734
     }
   },
   "rates": {
@@ -87,11 +87,11 @@
       "unit": "%",
       "decimals": 2,
       "available": true,
-      "date": "2026-06-26",
-      "previous_date": "2026-06-25",
-      "value": 4.07,
-      "previous": 4.09,
-      "change": -0.019999999999999574,
+      "date": "2026-06-29",
+      "previous_date": "2026-06-26",
+      "value": 4.1,
+      "previous": 4.07,
+      "change": 0.02999999999999936,
       "source_name": "FRED CSV"
     },
     "us10y": {
@@ -100,11 +100,11 @@
       "unit": "%",
       "decimals": 2,
       "available": true,
-      "date": "2026-06-26",
-      "previous_date": "2026-06-25",
+      "date": "2026-06-29",
+      "previous_date": "2026-06-26",
       "value": 4.38,
-      "previous": 4.4,
-      "change": -0.020000000000000462,
+      "previous": 4.38,
+      "change": 0.0,
       "source_name": "FRED CSV"
     },
     "real10y": {
@@ -113,26 +113,26 @@
       "unit": "%",
       "decimals": 2,
       "available": true,
-      "date": "2026-06-26",
-      "previous_date": "2026-06-25",
-      "value": 2.18,
-      "previous": 2.19,
-      "change": -0.009999999999999787,
+      "date": "2026-06-29",
+      "previous_date": "2026-06-26",
+      "value": 2.16,
+      "previous": 2.18,
+      "change": -0.020000000000000018,
       "source_name": "FRED CSV"
     }
   },
   "ratio": {
     "label": "Gold/silver ratio",
     "available": true,
-    "value": 67.86195111870168,
-    "previous": 69.1413837559089,
-    "change": -1.279432637207222,
+    "value": 68.45732628024291,
+    "previous": 67.63791045278008,
+    "change": 0.8194158274628336,
     "unit": "",
     "decimals": 2
   },
   "driver_scores": {
-    "xauusd": 0.5,
-    "xagusd": 2.3,
-    "eurusd": -2.0
+    "xauusd": 0.0,
+    "xagusd": -1.7,
+    "eurusd": -1.2
   }
 }
